@@ -1,0 +1,43 @@
+{
+  "format": "custom",
+  "id": "homepage",
+  "label": "Homepage",
+  "repeatable": false,
+  "status": true,
+  "json": {
+    "Main": {
+      "wordmark_text": {
+        "type": "Text",
+        "config": {
+          "label": "wordmark_text",
+          "placeholder": "CORTEX"
+        }
+      },
+      "tagline": {
+        "type": "Text",
+        "config": {
+          "label": "tagline",
+          "placeholder": "The Everything App for Students"
+        }
+      },
+      "primary_btn_label": {
+        "type": "Text",
+        "config": {
+          "label": "primary_btn_label",
+          "placeholder": "Get Started"
+        }
+      },
+      "primary_button_href": {
+        "type": "Link",
+        "config": {
+          "label": "primary_button_href ",
+          "placeholder": "",
+          "select": null,
+          "allowTargetBlank": true,
+          "allowText": true,
+          "repeat": false
+        }
+      }
+    }
+  }
+}
