@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -33,10 +33,11 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 
 	const classId = searchParams.get("classId") ?? "";
 
-	const [loaded, setLoaded] = useState(false);
-	const [title, setTitle] = useState("");
-	const [content, setContent] = useState("");
-	const [notFound, setNotFound] = useState(false);
+	const [draft, setDraft] = useState<{
+		key: string;
+		title: string;
+		content: string;
+	} | null>(null);
 
 	const theme = useMemo(
 		() => ({
@@ -157,29 +158,27 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 		};
 	}, [theme]);
 
-	useEffect(() => {
+	const noteState = useMemo(() => {
+		if (typeof window === "undefined") {
+			return { ready: false, found: null as NoteRow | null, notFound: false };
+		}
+
 		// If classId is missing, we cannot locate the right notes list.
 		if (!classId) {
-			setNotFound(true);
-			setLoaded(true);
-			return;
+			return { ready: true, found: null as NoteRow | null, notFound: true };
 		}
 
 		const raw = localStorage.getItem(notesKey(classId));
 		const parsed = raw ? safeJsonParse<NoteRow[]>(raw) : null;
 		const notes = Array.isArray(parsed) ? parsed : [];
+		const found = notes.find((n) => n.id === noteId) ?? null;
 
-		const found = notes.find((n) => n.id === noteId);
-		if (!found) {
-			setNotFound(true);
-			setLoaded(true);
-			return;
-		}
-
-		setTitle(found.title ?? "");
-		setContent(found.content ?? "");
-		setLoaded(true);
+		return { ready: true, found, notFound: !found };
 	}, [classId, noteId]);
+
+	const currentKey = `${classId}:${noteId}`;
+	const title = draft?.key === currentKey ? draft.title : noteState.found?.title ?? "";
+	const content = draft?.key === currentKey ? draft.content : noteState.found?.content ?? "";
 
 	function save(next: { title: string; content: string }) {
 		if (!classId) return;
@@ -190,7 +189,6 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 
 		const idx = notes.findIndex((n) => n.id === noteId);
 		if (idx === -1) {
-			setNotFound(true);
 			return;
 		}
 
@@ -207,9 +205,9 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 		localStorage.setItem(notesKey(classId), JSON.stringify(nextNotes));
 	}
 
-	if (!loaded) return null;
+	if (!noteState.ready) return null;
 
-	if (notFound) {
+	if (noteState.notFound) {
 		return (
 			<main style={styles.stage}>
 				<div style={styles.container}>
@@ -274,7 +272,11 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 					value={title}
 					onChange={(e) => {
 						const next = e.target.value;
-						setTitle(next);
+						setDraft({
+							key: currentKey,
+							title: next,
+							content,
+						});
 						save({ title: next, content });
 					}}
 					placeholder="Untitled note"
@@ -285,7 +287,11 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 					value={content}
 					onChange={(e) => {
 						const next = e.target.value;
-						setContent(next);
+						setDraft({
+							key: currentKey,
+							title,
+							content: next,
+						});
 						save({ title, content: next });
 					}}
 					placeholder="Write your notes here..."

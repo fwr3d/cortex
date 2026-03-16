@@ -88,13 +88,13 @@ export default function DashboardPage() {
 		try {
 			const userId = localStorage.getItem(USER_ID_KEY);
 			if (!userId) {
-				setPayload(null);
+				setTimeout(() => setPayload(null), 0);
 				return;
 			}
 
 			const raw = localStorage.getItem(`cortex:users:${userId}:onboarding:v1`);
 			if (!raw) {
-				setPayload(null);
+				setTimeout(() => setPayload(null), 0);
 				return;
 			}
 
