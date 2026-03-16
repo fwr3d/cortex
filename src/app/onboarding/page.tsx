@@ -1,5 +1,10 @@
-import Onboarding from "./Onboarding";
+import React, { Suspense } from "react";
+import OnboardingClient from "./Onboarding";
 
 export default function Page() {
-	return <Onboarding />;
+	return (
+		<Suspense fallback={null}>
+			<OnboardingClient />
+		</Suspense>
+	);
 }
