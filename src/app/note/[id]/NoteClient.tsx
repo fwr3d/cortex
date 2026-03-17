@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 type NoteRow = {
 	id: string;
+	classId: string;
 	title: string;
 	updatedAt: string; // ISO
 	content: string;
@@ -23,21 +24,54 @@ function nowIso() {
 	return new Date().toISOString();
 }
 
-function notesKey(classId: string) {
-	return `cortex:classes:${classId}:notes:v1`;
+function isNotesBucketKey(k: string) {
+	return k.startsWith("cortex:classes:") && k.endsWith(":notes:v1");
+}
+
+function extractClassIdFromBucketKey(k: string) {
+	// cortex:classes:<classId>:notes:v1
+	return k.slice("cortex:classes:".length, k.length - ":notes:v1".length);
+}
+
+function loadAllBuckets(): Array<{ key: string; classId: string; notes: NoteRow[] }> {
+	const out: Array<{ key: string; classId: string; notes: NoteRow[] }> = [];
+
+	for (let i = 0; i < localStorage.length; i++) {
+		const k = localStorage.key(i);
+		if (!k) continue;
+		if (!isNotesBucketKey(k)) continue;
+
+		const raw = localStorage.getItem(k);
+		const parsed = raw ? safeJsonParse<NoteRow[]>(raw) : null;
+		const notes = Array.isArray(parsed) ? parsed : [];
+		out.push({ key: k, classId: extractClassIdFromBucketKey(k), notes });
+	}
+
+	return out;
+}
+
+function findNoteById(noteId: string) {
+	const buckets = loadAllBuckets();
+	for (const b of buckets) {
+		const found = b.notes.find((n) => n.id === noteId);
+		if (found) {
+			// prefer stored classId, fall back to bucket key
+			const classId = found.classId || b.classId;
+			return { classId, bucketKey: b.key, notes: b.notes, note: found };
+		}
+	}
+	return null;
 }
 
 export default function NoteClient({ noteId }: { noteId: string }) {
 	const router = useRouter();
-	const searchParams = useSearchParams();
 
-	const classId = searchParams.get("classId") ?? "";
+	const [loaded, setLoaded] = useState(false);
+	const [notFound, setNotFound] = useState(false);
 
-	const [draft, setDraft] = useState<{
-		key: string;
-		title: string;
-		content: string;
-	} | null>(null);
+	const [classId, setClassId] = useState("");
+	const [title, setTitle] = useState("");
+	const [content, setContent] = useState("");
 
 	const theme = useMemo(
 		() => ({
@@ -158,84 +192,67 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 		};
 	}, [theme]);
 
-	const noteState = useMemo(() => {
-		if (typeof window === "undefined") {
-			return { ready: false, found: null as NoteRow | null, notFound: false };
+	useEffect(() => {
+		const hit = findNoteById(noteId);
+		if (!hit) {
+			setNotFound(true);
+			setLoaded(true);
+			return;
 		}
 
-		// If classId is missing, we cannot locate the right notes list.
-		if (!classId) {
-			return { ready: true, found: null as NoteRow | null, notFound: true };
-		}
-
-		const raw = localStorage.getItem(notesKey(classId));
-		const parsed = raw ? safeJsonParse<NoteRow[]>(raw) : null;
-		const notes = Array.isArray(parsed) ? parsed : [];
-		const found = notes.find((n) => n.id === noteId) ?? null;
-
-		return { ready: true, found, notFound: !found };
-	}, [classId, noteId]);
-
-	const currentKey = `${classId}:${noteId}`;
-	const title = draft?.key === currentKey ? draft.title : noteState.found?.title ?? "";
-	const content = draft?.key === currentKey ? draft.content : noteState.found?.content ?? "";
+		setClassId(hit.classId);
+		setTitle(hit.note.title ?? "");
+		setContent(hit.note.content ?? "");
+		setLoaded(true);
+	}, [noteId]);
 
 	function save(next: { title: string; content: string }) {
-		if (!classId) return;
+		const hit = findNoteById(noteId);
+		if (!hit) {
+			setNotFound(true);
+			return;
+		}
 
-		const raw = localStorage.getItem(notesKey(classId));
-		const parsed = raw ? safeJsonParse<NoteRow[]>(raw) : null;
-		const notes = Array.isArray(parsed) ? parsed : [];
-
-		const idx = notes.findIndex((n) => n.id === noteId);
+		const idx = hit.notes.findIndex((n) => n.id === noteId);
 		if (idx === -1) {
+			setNotFound(true);
 			return;
 		}
 
 		const updated: NoteRow = {
-			...notes[idx],
+			...hit.notes[idx],
+			classId: hit.classId,
 			title: next.title,
 			content: next.content,
 			updatedAt: nowIso(),
 		};
 
-		const nextNotes = notes.slice();
+		const nextNotes = hit.notes.slice();
 		nextNotes[idx] = updated;
 
-		localStorage.setItem(notesKey(classId), JSON.stringify(nextNotes));
+		localStorage.setItem(hit.bucketKey, JSON.stringify(nextNotes));
 	}
 
-	if (!noteState.ready) return null;
+	if (!loaded) return null;
 
-	if (noteState.notFound) {
+	if (notFound) {
 		return (
 			<main style={styles.stage}>
 				<div style={styles.container}>
 					<div style={styles.header}>
 						<div>
 							<div style={styles.h1}>Note not found</div>
-							<div style={styles.sub}>
-								This note does not exist in local storage for this class.
-							</div>
+							<div style={styles.sub}>This note was not found in local storage.</div>
 						</div>
 						<div style={styles.actions}>
-							{classId ? (
-								<Link href={`/class/${encodeURIComponent(classId)}`} style={styles.action}>
-									Back to class
-								</Link>
-							) : (
-								<Link href="/dashboard" style={styles.action}>
-									Back to dashboard
-								</Link>
-							)}
+							<Link href="/dashboard" style={styles.action}>
+								Back to dashboard
+							</Link>
 						</div>
 					</div>
 
 					<div style={styles.error}>
-						Missing or invalid <code>classId</code>, or the note id was not found.
-						<br />
-						<br />
-						Expected URL shape: <code>/note/&lt;noteId&gt;?classId=&lt;classId&gt;</code>
+						This note id does not exist in any <code>cortex:classes:\*:notes:v1</code> bucket.
 					</div>
 				</div>
 			</main>
@@ -272,11 +289,7 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 					value={title}
 					onChange={(e) => {
 						const next = e.target.value;
-						setDraft({
-							key: currentKey,
-							title: next,
-							content,
-						});
+						setTitle(next);
 						save({ title: next, content });
 					}}
 					placeholder="Untitled note"
@@ -287,11 +300,7 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 					value={content}
 					onChange={(e) => {
 						const next = e.target.value;
-						setDraft({
-							key: currentKey,
-							title,
-							content: next,
-						});
+						setContent(next);
 						save({ title, content: next });
 					}}
 					placeholder="Write your notes here..."

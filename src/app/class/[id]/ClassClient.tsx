@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 type NoteRow = {
 	id: string;
+	classId: string;
 	title: string;
 	updatedAt: string; // ISO
 	content: string;
@@ -31,7 +32,7 @@ function nowIso() {
 	return new Date().toISOString();
 }
 
-function NoteIcon({ size = 96 }: { size?: number }) {
+function NoteIcon({ size = 104 }: { size?: number }) {
 	return (
 		<svg
 			xmlns="http://www.w3.org/2000/svg"
@@ -149,6 +150,7 @@ export default function ClassClient({ classId }: { classId: string }) {
 			textDecoration: "none",
 		};
 
+		// Grid like dashboard classes, explicitly left-to-right.
 		const grid: React.CSSProperties = {
 			display: "grid",
 			gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
@@ -158,7 +160,8 @@ export default function ClassClient({ classId }: { classId: string }) {
 			justifyItems: "start",
 		};
 
-		const noteButton: React.CSSProperties = {
+		// Tile is the click target, no box behind it.
+		const noteTile: React.CSSProperties = {
 			display: "flex",
 			flexDirection: "column",
 			alignItems: "flex-start",
@@ -209,7 +212,7 @@ export default function ClassClient({ classId }: { classId: string }) {
 			actions,
 			action,
 			grid,
-			noteButton,
+			noteTile,
 			noteIconWrap,
 			noteTitle,
 			empty,
@@ -233,6 +236,7 @@ export default function ClassClient({ classId }: { classId: string }) {
 								const id = newId();
 								const nextNote: NoteRow = {
 									id,
+									classId,
 									title: "Untitled note",
 									updatedAt: nowIso(),
 									content: "",
@@ -241,7 +245,8 @@ export default function ClassClient({ classId }: { classId: string }) {
 								const next = [nextNote, ...notes];
 								persist(next);
 
-								router.push(`/note/${id}?classId=${encodeURIComponent(classId)}`);
+								// No query param needed.
+								router.push(`/note/${id}`);
 							}}
 						>
 							New note
@@ -263,12 +268,12 @@ export default function ClassClient({ classId }: { classId: string }) {
 					{notes.map((n) => (
 						<Link
 							key={n.id}
-							href={`/note/${n.id}?classId=${encodeURIComponent(classId)}`}
-							style={styles.noteButton}
+							href={`/note/${n.id}`}
+							style={styles.noteTile}
 							aria-label={`Open note ${n.title || "Untitled note"}`}
 						>
 							<div style={styles.noteIconWrap}>
-								<NoteIcon size={96} />
+								<NoteIcon size={104} />
 							</div>
 							<div style={styles.noteTitle}>{n.title || "Untitled note"}</div>
 						</Link>
