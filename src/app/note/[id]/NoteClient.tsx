@@ -185,22 +185,30 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 			outline: "none",
 		};
 
+		// Docs-like layout
+		// - Gray canvas
+		// - Centered white "paper" (Letter-ish) with generous margins
 		const docShell: React.CSSProperties = {
 			border: `1px solid ${theme.border}`,
 			borderRadius: 18,
-			background: "rgba(255,255,255,0.03)",
+			background: "rgba(255,255,255,0.02)",
 			boxShadow: "0 28px 80px rgba(0,0,0,0.55)",
-			padding: 12,
+			padding: 18,
 		};
 
+		// Approx Letter page at 96dpi: 8.5in x 11in → 816 x 1056
 		const paper: React.CSSProperties = {
+			width: "min(816px, 100%)",
+			height: 1056,
+			margin: "0 auto",
 			border: `1px solid ${theme.border}`,
-			borderRadius: 16,
-			background: "rgba(255,255,255,0.055)",
-			padding: "14px 14px",
+			borderRadius: 10,
+			background: "rgba(0,0,0,0.22)",
+			padding: "56px 64px",
+			boxSizing: "border-box",
 			display: "flex",
 			flexDirection: "column",
-			gap: 10,
+			gap: 14,
 		};
 
 		const toolbar: React.CSSProperties = {
@@ -211,7 +219,7 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 			flexWrap: "wrap",
 			border: `1px solid ${theme.border}`,
 			borderRadius: 12,
-			background: "rgba(0,0,0,0.18)",
+			background: "rgba(0,0,0,0.22)",
 			padding: "8px 10px",
 		};
 
@@ -246,7 +254,7 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 			cursor: "not-allowed",
 			fontWeight: 800,
 			fontSize: 12,
-			opacity: 0.6,
+			opacity: 0.75,
 			lineHeight: 1,
 		};
 
@@ -257,7 +265,7 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 			border: `1px solid ${theme.border}`,
 			borderRadius: 10,
 			overflow: "hidden",
-			opacity: 0.75,
+			opacity: 0.85,
 		};
 
 		const fontSizePillBtn: React.CSSProperties = {
@@ -296,16 +304,18 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 
 		const textarea: React.CSSProperties = {
 			width: "100%",
-			minHeight: 520,
-			border: `1px solid ${theme.border}`,
-			borderRadius: 12,
-			background: "rgba(0,0,0,0.14)",
+			flex: "1 1 auto",
+			minHeight: 0,
+			boxSizing: "border-box",
+			border: "none",
+			borderRadius: 0,
+			background: "transparent",
 			color: theme.text,
-			padding: "14px 14px",
-			fontSize: 15,
+			padding: 0,
+			fontSize: 16,
 			lineHeight: 1.7,
 			outline: "none",
-			resize: "vertical",
+			resize: "none",
 			fontFamily:
 				"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, Apple Color Emoji, Segoe UI Emoji",
 			tabSize: 4,
