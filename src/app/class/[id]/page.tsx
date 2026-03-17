@@ -1,5 +1,10 @@
 import ClassClient from "./ClassClient";
 
-export default async function Page({ params }: { params: { id: string } }) {
-	return <ClassClient classId={params.id} />;
+type PageProps = {
+	params: Promise<{ id: string }>;
+};
+
+export default async function Page({ params }: PageProps) {
+	const { id } = await params;
+	return <ClassClient classId={id} />;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -45,7 +45,7 @@ function NoteIcon({ size = 104 }: { size?: number }) {
 			fillRule="evenodd"
 			clipRule="evenodd"
 			aria-hidden="true"
-			style= {{display: "block" }}
+						style={{ display: "block" }}
 		>
 			<path
 				fill="#6DBF39"
@@ -68,19 +68,57 @@ function NoteIcon({ size = 104 }: { size?: number }) {
 	);
 }
 
+function parseAutoNumber(title: string, classId: string) {
+	// Expect: "<classId> <major>.<minor>"
+	const prefix = `${classId} `;
+	if (!title.startsWith(prefix)) return null;
+	const rest = title.slice(prefix.length).trim();
+	const m = rest.match(/^(\d+)\.(\d+)$/);
+	if (!m) return null;
+	return { major: Number(m[1]), minor: Number(m[2]) };
+}
+
+function nextAutoTitle(classId: string, notes: NoteRow[]) {
+	const nums = notes
+		.map((n) => parseAutoNumber(n.title ?? "", classId))
+		.filter(Boolean) as Array<{ major: number; minor: number }>;
+
+	if (nums.length === 0) return `${classId} 1.1`;
+
+	// Find highest (major, minor)
+	nums.sort((a, b) => (a.major - b.major) || (a.minor - b.minor));
+	const last = nums[nums.length - 1];
+
+	let major = last.major;
+	let minor = last.minor + 1;
+	if (minor > 9) {
+		major += 1;
+		minor = 1;
+	}
+
+	return `${classId} ${major}.${minor}`;
+}
+
 export default function ClassClient({ classId }: { classId: string }) {
 	const router = useRouter();
-	const [notes, setNotes] = useState<NoteRow[]>([]);
 
-	useEffect(() => {
+	const [notes, setNotes] = useState<NoteRow[]>(() => {
 		const raw = localStorage.getItem(notesKey(classId));
 		const parsed = raw ? safeJsonParse<NoteRow[]>(raw) : null;
-		setNotes(Array.isArray(parsed) ? parsed : []);
-	}, [classId]);
+		return Array.isArray(parsed) ? parsed : [];
+	});
 
 	function persist(next: NoteRow[]) {
 		setNotes(next);
 		localStorage.setItem(notesKey(classId), JSON.stringify(next));
+	}
+
+	function deleteNote(noteId: string) {
+		const note = notes.find((n) => n.id === noteId);
+		const label = note?.title || "Untitled note";
+		const ok = window.confirm(`Delete "${label}"? This cannot be undone.`);
+		if (!ok) return;
+		persist(notes.filter((n) => n.id !== noteId));
 	}
 
 	const theme = useMemo(
@@ -90,6 +128,7 @@ export default function ClassClient({ classId }: { classId: string }) {
 			border: "rgba(255,255,255,0.12)",
 			text: "#ecfeff",
 			muted: "rgba(236,254,255,0.72)",
+			danger: "rgba(248,113,113,0.95)",
 		}),
 		[],
 	);
@@ -150,7 +189,12 @@ export default function ClassClient({ classId }: { classId: string }) {
 			textDecoration: "none",
 		};
 
-		// Grid like dashboard classes, explicitly left-to-right.
+		const dangerAction: React.CSSProperties = {
+			...action,
+			border: `1px solid ${theme.border}`,
+			color: theme.danger,
+		};
+
 		const grid: React.CSSProperties = {
 			display: "grid",
 			gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
@@ -160,7 +204,6 @@ export default function ClassClient({ classId }: { classId: string }) {
 			justifyItems: "start",
 		};
 
-		// Tile is the click target, no box behind it.
 		const noteTile: React.CSSProperties = {
 			display: "flex",
 			flexDirection: "column",
@@ -175,6 +218,7 @@ export default function ClassClient({ classId }: { classId: string }) {
 			cursor: "pointer",
 			userSelect: "none",
 			color: theme.text,
+			position: "relative",
 		};
 
 		const noteIconWrap: React.CSSProperties = {
@@ -191,6 +235,17 @@ export default function ClassClient({ classId }: { classId: string }) {
 			lineHeight: 1.2,
 			textAlign: "left",
 			maxWidth: 180,
+		};
+
+		const deletePill: React.CSSProperties = {
+			...dangerAction,
+			padding: "6px 10px",
+			borderRadius: 999,
+			fontSize: 12,
+			fontWeight: 800,
+			position: "absolute",
+			right: 6,
+			top: 6,
 		};
 
 		const empty: React.CSSProperties = {
@@ -211,10 +266,12 @@ export default function ClassClient({ classId }: { classId: string }) {
 			sub,
 			actions,
 			action,
+			dangerAction,
 			grid,
 			noteTile,
 			noteIconWrap,
 			noteTitle,
+			deletePill,
 			empty,
 		};
 	}, [theme]);
@@ -234,18 +291,16 @@ export default function ClassClient({ classId }: { classId: string }) {
 							style={styles.action}
 							onClick={() => {
 								const id = newId();
+								const title = nextAutoTitle(classId, notes);
 								const nextNote: NoteRow = {
 									id,
 									classId,
-									title: "Untitled note",
+									title,
 									updatedAt: nowIso(),
 									content: "",
 								};
-
 								const next = [nextNote, ...notes];
 								persist(next);
-
-								// No query param needed.
 								router.push(`/note/${id}`);
 							}}
 						>
@@ -266,17 +321,31 @@ export default function ClassClient({ classId }: { classId: string }) {
 
 				<section style={styles.grid} aria-label="Notes">
 					{notes.map((n) => (
-						<Link
-							key={n.id}
-							href={`/note/${n.id}`}
-							style={styles.noteTile}
-							aria-label={`Open note ${n.title || "Untitled note"}`}
-						>
-							<div style={styles.noteIconWrap}>
-								<NoteIcon size={104} />
-							</div>
-							<div style={styles.noteTitle}>{n.title || "Untitled note"}</div>
-						</Link>
+							<div key={n.id} style= {{position: "relative"}} >
+							<Link
+								href={`/note/${n.id}`}
+								style={styles.noteTile}
+								aria-label={`Open note ${n.title || "Untitled note"}`}
+							>
+								<button
+									type="button"
+									style={styles.deletePill}
+									onClick={(e) => {
+										e.preventDefault();
+										e.stopPropagation();
+										deleteNote(n.id);
+									}}
+									aria-label={`Delete ${n.title || "note"}`}
+								>
+									Delete
+								</button>
+
+								<div style={styles.noteIconWrap}>
+									<NoteIcon size={104} />
+								</div>
+								<div style={styles.noteTitle}>{n.title || "Untitled note"}</div>
+							</Link>
+						</div>
 					))}
 				</section>
 			</div>

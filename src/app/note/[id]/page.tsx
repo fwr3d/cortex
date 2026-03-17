@@ -1,5 +1,10 @@
 import NoteClient from "./NoteClient";
 
-export default async function Page({ params }: { params: { id: string } }) {
-	return <NoteClient noteId={params.id} />;
+type PageProps = {
+	params: Promise<{ id: string }>;
+};
+
+export default async function NotePage({ params }: PageProps) {
+	const { id } = await params;
+	return <NoteClient noteId={id} />;
 }
