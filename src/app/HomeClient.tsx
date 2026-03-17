@@ -1,16 +1,9 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { useEffect, useMemo, useRef } from "react";
+import Link from "next/link";
 import gsap from "gsap";
-
-import CortexWord from "@/components/CortexWord";
-
-// Define available modes for GlitchIdle
-const MODES = ["default", "glitch", "matrix", "scan"] as const;
-type IdleMode = typeof MODES[number];
-
-const USER_ID_KEY = "cortex:userId";
+import CortexWord, { type CortexMode } from "@/components/CortexWord";
 
 type Props = {
 	wordmarkText: string;
@@ -19,41 +12,18 @@ type Props = {
 	ctaHref: string;
 };
 
-export default function HomeClient({ wordmarkText, tagline, ctaLabel }: Props) {
-	const router = useRouter();
-
+export default function HomeClient({ wordmarkText, tagline, ctaLabel, ctaHref }: Props) {
 	// Single locked theme (Carbon)
 	const accent = "#16a34a";
 	const textColor = "#ecfeff";
 	const mutedColor = "rgba(236,254,255,0.72)";
 
-	// One knob to tune all background motion
-	const intensity = 1.4; // <- edit this (0..3)
-
-	// Idle mode state
-	const [idleMode, setIdleMode] = useState<IdleMode>(MODES[0]);
+	const mode: CortexMode = "glitchHard";
 
 	const ctaRef = useRef<HTMLButtonElement | null>(null);
 
 	useEffect(() => {
-		const onKeyDown = (e: KeyboardEvent) => {
-			if (e.key.toLowerCase() !== "m") return;
-
-			setIdleMode((prev: IdleMode) => {
-				const i = MODES.indexOf(prev);
-				const dir = e.shiftKey ? -1 : 1;
-				const next = (i + dir + MODES.length) % MODES.length;
-				return MODES[next];
-			});
-		};
-
-		window.addEventListener("keydown", onKeyDown);
-		return () => window.removeEventListener("keydown", onKeyDown);
-	}, []);
-
-	useEffect(() => {
 		if (!ctaRef.current) return;
-
 		const ctx = gsap.context(() => {
 			gsap.fromTo(
 				ctaRef.current,
@@ -61,7 +31,6 @@ export default function HomeClient({ wordmarkText, tagline, ctaLabel }: Props) {
 				{ opacity: 1, y: 0, duration: 0.55, ease: "power3.out", delay: 0.2 },
 			);
 		});
-
 		return () => ctx.revert();
 	}, []);
 
@@ -75,13 +44,9 @@ export default function HomeClient({ wordmarkText, tagline, ctaLabel }: Props) {
 			color: textColor,
 			fontFamily:
 				"ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, Apple Color Emoji, Segoe UI Emoji",
-			position: "relative",
-			overflow: "hidden",
 		};
 
-		const centerWrap: React.CSSProperties = {
-			position: "relative",
-			zIndex: 1,
+		const center: React.CSSProperties = {
 			width: "min(980px, 100%)",
 			display: "flex",
 			flexDirection: "column",
@@ -110,87 +75,45 @@ export default function HomeClient({ wordmarkText, tagline, ctaLabel }: Props) {
 			fontSize: 13,
 		};
 
-		const modePill: React.CSSProperties = {
-			position: "fixed",
-			left: 14,
-			bottom: 14,
-			zIndex: 3,
-			border: "1px solid rgba(255,255,255,0.12)",
-			borderRadius: 999,
-			padding: "8px 10px",
-			fontSize: 12,
-			color: mutedColor,
-			background: "rgba(0,0,0,0.25)",
-			backdropFilter: "blur(8px)",
-			userSelect: "none",
-		};
-
-		const modeStrong: React.CSSProperties = {
-			color: textColor,
-			fontWeight: 700,
-		};
-
-		const modeHint: React.CSSProperties = {
-			opacity: 0.8,
-			marginLeft: 8,
-		};
-
-		return { stage, centerWrap, taglineStyle, btn, modePill, modeStrong, modeHint };
-	}, [accent, mutedColor, textColor]);
+		return { stage, center, taglineStyle, btn };
+	}, [accent, mutedColor]);
 
 	return (
 		<main style={styles.stage}>
-			{/* Background (press M to cycle, Shift+M backwards) */}
-			
-
-			{/* Content */}
-			<div style={styles.centerWrap}>
-				<CortexWord
-					text={wordmarkText}
-					accent={accent}
-					textColor={textColor}
-					mutedColor={mutedColor}
-					intensity={1.8}
-				/>
+			<div style={styles.center}>
+				<CortexWord text={wordmarkText} mode={mode} accent={accent} textColor={textColor} mutedColor={mutedColor} />
 
 				<div style={styles.taglineStyle} aria-label="Tagline">
 					{tagline}
 				</div>
 
-				<button
-					ref={ctaRef}
-					type="button"
-					style={styles.btn}
-					onClick={() => {
-						const userId = localStorage.getItem(USER_ID_KEY);
-						router.push(userId ? "/dashboard" : "/login");
-					}}
-					onMouseEnter={() => {
-						if (!ctaRef.current) return;
-						gsap.to(ctaRef.current, {
-							y: -2,
-							scale: 1.01,
-							duration: 0.18,
-							ease: "power2.out",
-						});
-					}}
-					onMouseLeave={() => {
-						if (!ctaRef.current) return;
-						gsap.to(ctaRef.current, {
-							y: 0,
-							scale: 1,
-							duration: 0.18,
-							ease: "power2.out",
-						});
-					}}
-				>
-					{ctaLabel}
-				</button>
-			</div>
-
-			<div style={styles.modePill}>
-				Mode: <span style={styles.modeStrong}>{idleMode}</span>
-				<span style={styles.modeHint}>(M)</span>
+				<Link href="/login" prefetch>
+					<button
+						ref={ctaRef}
+						type="button"
+						style={styles.btn}
+						onMouseEnter={() => {
+							if (!ctaRef.current) return;
+							gsap.to(ctaRef.current, {
+								y: -2,
+								scale: 1.01,
+								duration: 0.18,
+								ease: "power2.out",
+							});
+						}}
+						onMouseLeave={() => {
+							if (!ctaRef.current) return;
+							gsap.to(ctaRef.current, {
+								y: 0,
+								scale: 1,
+								duration: 0.18,
+								ease: "power2.out",
+							});
+						}}
+					>
+						{ctaLabel}
+					</button>
+				</Link>
 			</div>
 		</main>
 	);
