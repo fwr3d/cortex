@@ -35,7 +35,11 @@ export default function LoginPage() {
 		// If a user id already exists, skip login.
 		try {
 			const existing = localStorage.getItem(USER_ID_KEY);
-			if (existing) router.push("/onboarding");
+			if (existing) {
+    const onboardingKey = `cortex:users:${existing}:onboarding:v1`;
+    const onboarded = localStorage.getItem(onboardingKey);
+    router.push(onboarded ? "/dashboard" : "/onboarding");
+}
 		} catch {
 			// ignore
 		}
