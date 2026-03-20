@@ -90,7 +90,12 @@ export default function HomeClient({ wordmarkText, tagline, ctaLabel }: Props) {
     return (
         <main style={styles.stage}>
             <div style={styles.center}>
-                <CortexWord text={wordmarkText} accent={accent} textColor={textColor} />
+                <CortexWord
+	text={wordmarkText}
+	mode="glitchSoft"
+	accent={accent}
+	textColor={textColor}
+/>
 
                 <div style={styles.taglineStyle} aria-label="Tagline">
                     {tagline}
