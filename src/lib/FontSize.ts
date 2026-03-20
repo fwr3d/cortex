@@ -1,4 +1,5 @@
 import { Extension } from "@tiptap/core";
+import type { RawCommands } from "@tiptap/core";
 
 const FontSize = Extension.create({
   name: "fontSize",
@@ -10,8 +11,7 @@ const FontSize = Extension.create({
         attributes: {
           fontSize: {
             default: null,
-            parseHTML: (el) =>
-              (el as HTMLElement).style.fontSize || null,
+            parseHTML: (el) => (el as HTMLElement).style.fontSize || null,
             renderHTML: (attrs) => {
               if (!attrs.fontSize) return {};
               return { style: `font-size: ${attrs.fontSize}` };
@@ -26,18 +26,18 @@ const FontSize = Extension.create({
     return {
       setFontSize:
         (fontSize: string) =>
-        ({ chain }) => {
+        ({ chain }: { chain: () => any }) => {
           return chain().setMark("textStyle", { fontSize }).run();
         },
       unsetFontSize:
         () =>
-        ({ chain }) => {
+        ({ chain }: { chain: () => any }) => {
           return chain()
             .setMark("textStyle", { fontSize: null })
             .removeEmptyTextStyle()
             .run();
         },
-    } as any;
+    } as unknown as Partial<RawCommands>;
   },
 });
 
