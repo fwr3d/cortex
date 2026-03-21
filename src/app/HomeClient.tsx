@@ -92,7 +92,7 @@ export default function HomeClient({ wordmarkText, tagline, ctaLabel }: Props) {
             <div style={styles.center}>
                 <CortexWord
 	text={wordmarkText}
-	mode="glitchSoft"
+	mode="glitchHard"
 	accent={accent}
 	textColor={textColor}
 />
