@@ -7,6 +7,8 @@ import { useRouter } from "next/navigation";
 import type { NoteRow } from "@/types";
 import { safeJsonParse, nowIso, newId } from "@/lib/utils";
 import { slugifyClassName, getNotesBucketKey } from "@/lib/notes/storage";
+import { useMobile } from "@/lib/hooks";
+import { theme } from "@/lib/theme";
 
 function NoteIcon({ size = 104 }: { size?: number }) {
 	return (
@@ -75,14 +77,7 @@ function nextAutoTitle(classIdSlug: string, notes: NoteRow[]) {
 
 export default function ClassClient({ classId }: { classId: string }) {
 	const router = useRouter();
-	const [isMobile, setIsMobile] = React.useState(false);
-
-	React.useEffect(() => {
-		const check = () => setIsMobile(window.innerWidth < 768);
-		check();
-		window.addEventListener("resize", check);
-		return () => window.removeEventListener("resize", check);
-	}, []);
+	const isMobile = useMobile();
 
 	const classIdSlug = useMemo(() => slugifyClassName(classId), [classId]);
 
@@ -103,18 +98,6 @@ export default function ClassClient({ classId }: { classId: string }) {
 		if (!window.confirm(`Delete "${label}"? This cannot be undone.`)) return;
 		persist(notes.filter((n) => n.id !== noteId));
 	}
-
-	const theme = useMemo(
-		() => ({
-			bg: "#070a0a",
-			panel: "rgba(255,255,255,0.06)",
-			border: "rgba(255,255,255,0.12)",
-			text: "#ecfeff",
-			muted: "rgba(236,254,255,0.72)",
-			danger: "rgba(248,113,113,0.95)",
-		}),
-		[],
-	);
 
 	const styles = useMemo(() => {
 		const stage: React.CSSProperties = {

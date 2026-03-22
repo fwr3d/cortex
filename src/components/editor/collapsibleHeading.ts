@@ -80,7 +80,7 @@ export const CollapsibleHeading = Heading.extend({
 					return existing;
 				}
 
-				const pos = typeof getPos === "function" ? getPos() : 0;
+				const pos = typeof getPos === "function" ? (getPos() ?? 0) : 0;
 				const nextId = `h-${pos}`;
 
 				editor

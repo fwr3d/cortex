@@ -7,6 +7,8 @@ import FolderIcon from "@/components/FolderIcon";
 import type { OnboardingPayload } from "@/types";
 import { safeJsonParse, stableHash } from "@/lib/utils";
 import { slugifyClassName } from "@/lib/notes/storage";
+import { useMobile } from "@/lib/hooks";
+import { theme } from "@/lib/theme";
 
 const USER_ID_KEY = "cortex:userId";
 
@@ -39,14 +41,7 @@ export default function DashboardPage() {
 	const [payload, setPayload] = useState<OnboardingPayload | null>(null);
 	const [hovered, setHovered] = useState<string | null>(null);
 	const [pressed, setPressed] = useState<string | null>(null);
-	const [isMobile, setIsMobile] = useState(false);
-
-	useEffect(() => {
-		const check = () => setIsMobile(window.innerWidth < 768);
-		check();
-		window.addEventListener("resize", check);
-		return () => window.removeEventListener("resize", check);
-	}, []);
+	const isMobile = useMobile();
 
 	useEffect(() => {
 		try {
@@ -68,18 +63,6 @@ export default function DashboardPage() {
 			setPayload(null);
 		}
 	}, []);
-
-	const theme = useMemo(
-		() => ({
-			bg: "#070a0a",
-			panel: "rgba(255,255,255,0.06)",
-			border: "rgba(255,255,255,0.12)",
-			text: "#ecfeff",
-			muted: "rgba(236,254,255,0.72)",
-			accent: "#16a34a",
-		}),
-		[],
-	);
 
 	const styles = useMemo(() => {
 		const container: React.CSSProperties = {

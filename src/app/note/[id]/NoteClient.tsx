@@ -25,6 +25,8 @@ import { buildOutlineTree } from "@/components/editor/outlineTree";
 
 import { CollapseExtension } from "@/components/editor/collapseExtension";
 import { CollapsibleHeading } from "@/components/editor/collapsibleHeading";
+import { useMobile } from "@/lib/hooks";
+import { theme } from "@/lib/theme";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -42,14 +44,7 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 	const router = useRouter();
 	const searchParams = useSearchParams();
 
-	const [isMobile, setIsMobile] = useState(false);
-
-	useEffect(() => {
-		const check = () => setIsMobile(window.innerWidth < 768);
-		check();
-		window.addEventListener("resize", check);
-		return () => window.removeEventListener("resize", check);
-	}, []);
+	const isMobile = useMobile();
 
 	const [title, setTitle] = useState("");
 	const [fontSize, setFontSize] = useState(20);
@@ -128,19 +123,6 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 			content: hit.note.content ?? "",
 		});
 	}, [noteId]);
-
-	const theme = useMemo(
-		() => ({
-			bg: "#070a0a",
-			panel: "rgba(255,255,255,0.06)",
-			border: "rgba(255,255,255,0.12)",
-			text: "#ecfeff",
-			muted: "rgba(236,254,255,0.72)",
-			danger: "rgba(248,113,113,0.95)",
-			accent: "#16a34a",
-		}),
-		[],
-	);
 
 	function clearDebounceTimer() {
 		if (debounceTimerRef.current != null) {
@@ -314,7 +296,7 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 				levels: [1, 2, 3],
 				getIsCollapsed: (id: string) => editorCollapsedIdsRef.current.has(id),
 				onToggle: (id: string) => toggleEditorCollapsed(id),
-			}),
+			} as any),
 
 			// ✅ Color support (must target textStyle)
 			TextStyle,

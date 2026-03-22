@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import DashboardLayout from "@/components/DashboardLayout";
 import type { NoteRow, OnboardingPayload } from "@/types";
 import { safeJsonParse, nowIso } from "@/lib/utils";
 import { loadAllNotes, slugifyClassName } from "@/lib/notes/storage";
+import { theme } from "@/lib/theme";
 
 const USER_ID_KEY = "cortex:userId";
 const SESSION_SIZE = 5;
@@ -50,8 +51,34 @@ function toPlainTextFromTipTapJsonMaybe(raw: string): string {
 	}
 }
 
+type CachedFlashcard = { front: string; back: string; sources: { quote: string }[] };
+
+function loadCachedFlashcards(noteId: string): CachedFlashcard[] {
+	try {
+		const raw = localStorage.getItem(`cortex:notes:${noteId}:flashcards:v1`);
+		if (!raw) return [];
+		const parsed = safeJsonParse<{ cards: CachedFlashcard[] }>(raw);
+		return Array.isArray(parsed?.cards) ? parsed!.cards : [];
+	} catch {
+		return [];
+	}
+}
+
 function buildCardsFromNotes(notes: NoteRow[]): StudyCard[] {
 	return notes.map((n) => {
+		// Prefer cached flashcard front/back if available
+		const flashcards = loadCachedFlashcards(n.id);
+		if (flashcards.length > 0) {
+			const card = flashcards[0];
+			return {
+				noteId: n.id,
+				classId: n.classId,
+				title: n.title || "Untitled note",
+				preview: `${card.front}\n\n${card.back}`,
+				updatedAt: n.updatedAt,
+			};
+		}
+
 		const text = toPlainTextFromTipTapJsonMaybe(n.content ?? "");
 		const preview = text.length > 420 ? `${text.slice(0, 420)}…` : text;
 		return {
@@ -102,6 +129,8 @@ export default function StudySessionPage() {
 	const [idx, setIdx] = useState(0);
 	const [revealed, setRevealed] = useState(false);
 	const [isComplete, setIsComplete] = useState(false);
+
+	const touchStartX = useRef<number | null>(null);
 
 	useEffect(() => {
 		try {
@@ -200,19 +229,6 @@ export default function StudySessionPage() {
 			});
 		}
 	}
-
-	const theme = useMemo(
-		() => ({
-			bg: "#070a0a",
-			panel: "rgba(255,255,255,0.06)",
-			border: "rgba(255,255,255,0.12)",
-			text: "#ecfeff",
-			muted: "rgba(236,254,255,0.72)",
-			accent: "#16a34a",
-			danger: "rgba(248,113,113,0.95)",
-		}),
-		[],
-	);
 
 	const styles = useMemo(() => {
 		const container: React.CSSProperties = {
@@ -391,6 +407,19 @@ export default function StudySessionPage() {
 		setRevealed(false);
 	}
 
+	function onTouchStart(e: React.TouchEvent) {
+		touchStartX.current = e.touches[0].clientX;
+	}
+
+	function onTouchEnd(e: React.TouchEvent) {
+		if (touchStartX.current === null) return;
+		const delta = e.changedTouches[0].clientX - touchStartX.current;
+		touchStartX.current = null;
+		if (Math.abs(delta) < 50) return;
+		if (delta < 0) onNext();
+		else onPrev();
+	}
+
 	return (
 		<DashboardLayout
 			theme={theme}
@@ -466,7 +495,7 @@ export default function StudySessionPage() {
 						</div>
 					</section>
 				) : (
-					<section style={styles.panel} aria-label="Study card">
+					<section style={styles.panel} aria-label="Study card" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
 						<div style={styles.panelTitle}>
 							{cur?.title ?? "Untitled note"}{" "}
 							<span style= {{fontSize: 12, color: theme.muted, fontWeight: 900 }}>
