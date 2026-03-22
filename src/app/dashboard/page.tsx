@@ -2,8 +2,6 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-
 import DashboardLayout from "@/components/DashboardLayout";
 import FolderIcon from "@/components/FolderIcon";
 import type { OnboardingPayload } from "@/types";
@@ -11,7 +9,6 @@ import { safeJsonParse, stableHash } from "@/lib/utils";
 import { slugifyClassName } from "@/lib/notes/storage";
 
 const USER_ID_KEY = "cortex:userId";
-const SEEN_DASHBOARD_KEY = "cortex:seenDashboard:v1";
 
 type Spec = { fill: string; glyph: string };
 
@@ -39,25 +36,19 @@ function getSpec(className: string): Spec {
 }
 
 export default function DashboardPage() {
-	const router = useRouter();
 	const [payload, setPayload] = useState<OnboardingPayload | null>(null);
 	const [hovered, setHovered] = useState<string | null>(null);
 	const [pressed, setPressed] = useState<string | null>(null);
+	const [isMobile, setIsMobile] = useState(false);
 
 	useEffect(() => {
-		// Dashboard is a one-time "orientation" page. After the first visit,
-		// default landing should be Study.
-		try {
-			const seen = localStorage.getItem(SEEN_DASHBOARD_KEY);
-			if (seen === "1") {
-				router.replace("/study");
-				return;
-			}
-			localStorage.setItem(SEEN_DASHBOARD_KEY, "1");
-		} catch {
-			// ignore
-		}
+		const check = () => setIsMobile(window.innerWidth < 768);
+		check();
+		window.addEventListener("resize", check);
+		return () => window.removeEventListener("resize", check);
+	}, []);
 
+	useEffect(() => {
 		try {
 			const userId = localStorage.getItem(USER_ID_KEY);
 			if (!userId) {
@@ -76,7 +67,7 @@ export default function DashboardPage() {
 		} catch {
 			setPayload(null);
 		}
-	}, [router]);
+	}, []);
 
 	const theme = useMemo(
 		() => ({
@@ -126,9 +117,9 @@ export default function DashboardPage() {
 
 		const grid: React.CSSProperties = {
 			display: "grid",
-			gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-			columnGap: 46,
-			rowGap: 40,
+			gridTemplateColumns: isMobile ? "repeat(auto-fit, minmax(140px, 1fr))" : "repeat(auto-fit, minmax(240px, 1fr))",
+			columnGap: isMobile ? 16 : 46,
+			rowGap: isMobile ? 20 : 40,
 			alignItems: "start",
 		};
 
@@ -174,7 +165,7 @@ export default function DashboardPage() {
 			footerLabel,
 			footerValue,
 		};
-	}, [theme]);
+	}, [theme, isMobile]);
 
 	const classes = payload?.classes ?? [];
 
@@ -195,6 +186,7 @@ export default function DashboardPage() {
 			theme={theme}
 			sidebarTitle="Cortex"
 			sidebarItems={[
+				{ label: "Study", href: "/study" },
 				{ label: "My Drive", href: "/dashboard", active: true },
 				{ label: "Study session", href: "/study/session" },
 				{ label: "Edit classes", href: "/onboarding?step=classes" },
@@ -289,7 +281,7 @@ export default function DashboardPage() {
 										<div style={tooltip}>{name}</div>
 
 										<FolderIcon
-											size={144}
+											size={isMobile ? 100 : 144}
 											fill={spec.fill}
 											glyph={spec.glyph}
 											hovered={isHover}

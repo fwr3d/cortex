@@ -397,16 +397,17 @@ export default function StudySessionPage() {
 			sidebarTitle="Cortex"
 			sidebarItems={[
 				{ label: "Study", href: "/study" },
-				{ label: "Study session", href: "/study/session", active: true },
 				{ label: "My Drive", href: "/dashboard" },
+				{ label: "Study session", href: "/study/session", active: true },
 				{ label: "Edit classes", href: "/onboarding?step=classes" },
+				{ type: "divider" },
 				{ label: "← Home", href: "/" },
 				{ type: "divider" },
 				{
 					type: "button",
 					label: "Switch account",
 					onClick: () => {
-						localStorage.removeItem(USER_ID_KEY);
+						localStorage.clear();
 						setPayload(null);
 						router.push("/login");
 					},

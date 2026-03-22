@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 import DashboardLayout from "@/components/DashboardLayout";
 import type { NoteRow, OnboardingPayload } from "@/types";
@@ -13,7 +13,6 @@ const USER_ID_KEY = "cortex:userId";
 
 export default function StudyPage() {
 	const router = useRouter();
-	const pathname = usePathname();
 
 	const [payload, setPayload] = useState<OnboardingPayload | null>(null);
 	const [recentNotes, setRecentNotes] = useState<NoteRow[] | null>(null);
@@ -128,7 +127,7 @@ export default function StudyPage() {
 
 		const grid2: React.CSSProperties = {
 			display: "grid",
-			gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+			gridTemplateColumns: "repeat(auto-fit, minmax(min(320px, 100%), 1fr))",
 			gap: 14,
 			alignItems: "start",
 		};
@@ -181,6 +180,7 @@ export default function StudyPage() {
 			fontWeight: 800,
 			fontSize: 13,
 			outline: "none",
+			maxWidth: "100%",
 		};
 
 		const footerLabel: React.CSSProperties = { marginBottom: 6 };
@@ -267,23 +267,23 @@ export default function StudyPage() {
 		router.push(`/note/${id}`);
 	}
 
-	const isStudyActive = pathname === "/study";
-
 	return (
 		<DashboardLayout
 			theme={theme}
 			sidebarTitle="Cortex"
 			sidebarItems={[
-				{ label: "Study", href: "/study", active: isStudyActive },
-				{ label: "My Drive", href: "/dashboard", active: !isStudyActive },
+				{ label: "Study", href: "/study", active: true },
+				{ label: "My Drive", href: "/dashboard" },
+				{ label: "Study session", href: "/study/session" },
 				{ label: "Edit classes", href: "/onboarding?step=classes" },
+				{ type: "divider" },
 				{ label: "← Home", href: "/" },
 				{ type: "divider" },
 				{
 					type: "button",
 					label: "Switch account",
 					onClick: () => {
-						localStorage.removeItem(USER_ID_KEY);
+						localStorage.clear();
 						setPayload(null);
 						router.push("/login");
 					},
