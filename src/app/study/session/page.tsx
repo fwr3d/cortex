@@ -8,6 +8,7 @@ import type { NoteRow, OnboardingPayload } from "@/types";
 import { safeJsonParse, nowIso } from "@/lib/utils";
 import { loadAllNotes, slugifyClassName } from "@/lib/notes/storage";
 import { theme } from "@/lib/theme";
+import { supabase } from "@/lib/supabaseClient";
 
 const USER_ID_KEY = "cortex:userId";
 const SESSION_SIZE = 5;
@@ -133,21 +134,20 @@ export default function StudySessionPage() {
 	const touchStartX = useRef<number | null>(null);
 
 	useEffect(() => {
-		try {
-			const userId = localStorage.getItem(USER_ID_KEY);
-			if (!userId) {
-				setPayload(null);
-				return;
-			}
-			const raw = localStorage.getItem(`cortex:users:${userId}:onboarding:v1`);
-			if (!raw) {
-				setPayload(null);
-				return;
-			}
-			setPayload(safeJsonParse<OnboardingPayload>(raw));
-		} catch {
-			setPayload(null);
-		}
+		supabase.auth.getSession().then(async ({ data: { session } }) => {
+			if (!session) { setPayload(null); return; }
+			localStorage.setItem(USER_ID_KEY, session.user.id);
+			const { data } = await supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
+			if (!data) { setPayload(null); return; }
+			setPayload({
+				educationLevel: data.education_level ?? "highSchool",
+				grade: data.grade ?? undefined,
+				collegeName: data.college_name ?? "",
+				major: data.major ?? undefined,
+				classes: data.classes ?? [],
+				savedAt: new Date().toISOString(),
+			} as OnboardingPayload);
+		});
 	}, []);
 
 	useEffect(() => {
@@ -435,8 +435,9 @@ export default function StudySessionPage() {
 				{
 					type: "button",
 					label: "Switch account",
-					onClick: () => {
-						localStorage.clear();
+					onClick: async () => {
+						await supabase.auth.signOut();
+						localStorage.removeItem(USER_ID_KEY);
 						setPayload(null);
 						router.push("/login");
 					},
@@ -445,7 +446,7 @@ export default function StudySessionPage() {
 			sidebarFooter={
 				<>
 					<div style={styles.footerLabel}>Signed in</div>
-					<div style={styles.footerValue}>{payload ? "Local user" : "Not set"}</div>
+					<div style={styles.footerValue}>{payload ? "Signed in" : "Not signed in"}</div>
 				</>
 			}
 		>

@@ -3,41 +3,61 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
 
 const USER_ID_KEY = "cortex:userId";
 
-type CreateUserIdResult = { ok: true; userId: string } | { ok: false; error: string };
-
-function getOrCreateUserIdSafe(): CreateUserIdResult {
-	try {
-		const id = "local-user";
-		localStorage.setItem(USER_ID_KEY, id);
-		return { ok: true, userId: id };
-	} catch {
-		return {
-			ok: false,
-			error: "Could not access localStorage. Check browser privacy settings or disable blocking for localhost.",
-		};
-	}
-}
-
 export default function LoginPage() {
 	const router = useRouter();
-	const [error, setError] = useState<string>("");
 
+	const [mode, setMode] = useState<"signin" | "signup">("signin");
+	const [email, setEmail] = useState("");
+	const [password, setPassword] = useState("");
+	const [loading, setLoading] = useState(false);
+	const [error, setError] = useState("");
+
+	// Redirect if already authenticated
 	useEffect(() => {
-		// If a user id already exists, skip login.
-		try {
-			const existing = localStorage.getItem(USER_ID_KEY);
-			if (existing) {
-    const onboardingKey = `cortex:users:${existing}:onboarding:v1`;
-    const onboarded = localStorage.getItem(onboardingKey);
-    router.push(onboarded ? "/dashboard" : "/onboarding");
-}
-		} catch {
-			// ignore
-		}
+		supabase.auth.getSession().then(async ({ data: { session } }) => {
+			if (!session) return;
+			localStorage.setItem(USER_ID_KEY, session.user.id);
+			const { data } = await supabase.from("profiles").select("id").eq("id", session.user.id).maybeSingle();
+			router.push(data ? "/dashboard" : "/onboarding");
+		});
 	}, [router]);
+
+	async function handleSubmit(e: React.FormEvent) {
+		e.preventDefault();
+		setError("");
+		setLoading(true);
+
+		try {
+			if (mode === "signup") {
+				const { data, error } = await supabase.auth.signUp({ email, password });
+				if (error) throw error;
+				if (data.user) {
+					localStorage.setItem(USER_ID_KEY, data.user.id);
+					router.push("/onboarding");
+				}
+			} else {
+				const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+				if (error) throw error;
+				if (data.user) {
+					localStorage.setItem(USER_ID_KEY, data.user.id);
+					const { data: profile } = await supabase
+						.from("profiles")
+						.select("id")
+						.eq("id", data.user.id)
+						.maybeSingle();
+					router.push(profile ? "/dashboard" : "/onboarding");
+				}
+			}
+		} catch (e) {
+			setError(e instanceof Error ? e.message : "Something went wrong");
+		} finally {
+			setLoading(false);
+		}
+	}
 
 	const theme = useMemo(
 		() => ({
@@ -65,19 +85,19 @@ export default function LoginPage() {
 		};
 
 		const shell: React.CSSProperties = {
-			width: "min(520px, 100%)",
+			width: "min(480px, 100%)",
 			borderRadius: 20,
 			border: `1px solid ${theme.border}`,
 			background: theme.panel,
 			boxShadow: `0 34px 90px ${theme.shadow}, inset 0 1px 0 rgba(255,255,255,0.06)`,
-			padding: 18,
+			padding: 20,
 		};
 
 		const header: React.CSSProperties = {
 			display: "flex",
 			flexDirection: "column",
 			gap: 6,
-			padding: "6px 6px 12px",
+			padding: "6px 6px 16px",
 		};
 
 		const title: React.CSSProperties = {
@@ -95,30 +115,77 @@ export default function LoginPage() {
 		const body: React.CSSProperties = {
 			display: "flex",
 			flexDirection: "column",
-			gap: 12,
-			padding: 6,
+			gap: 10,
+			padding: "0 6px",
+		};
+
+		const label: React.CSSProperties = {
+			fontSize: 12,
+			fontWeight: 800,
+			color: theme.muted,
+			marginBottom: 4,
+			display: "block",
+		};
+
+		const input: React.CSSProperties = {
+			width: "100%",
+			border: `1px solid ${theme.border}`,
+			borderRadius: 12,
+			background: "rgba(0,0,0,0.24)",
+			color: theme.text,
+			padding: "11px 13px",
+			fontSize: 14,
+			fontWeight: 600,
+			outline: "none",
+			boxSizing: "border-box",
 		};
 
 		const btn: React.CSSProperties = {
 			width: "100%",
-			border: `1px solid ${theme.border}`,
-			cursor: "pointer",
+			border: "none",
+			cursor: loading ? "not-allowed" : "pointer",
 			padding: "12px 14px",
 			borderRadius: 14,
-			background: theme.accent,
+			background: loading ? "rgba(22,163,74,0.5)" : theme.accent,
 			color: "#07110d",
 			fontWeight: 800,
-			fontSize: 13,
+			fontSize: 14,
+			marginTop: 4,
 		};
 
 		const errorText: React.CSSProperties = {
 			fontSize: 12,
 			color: "rgba(255, 170, 170, 0.95)",
 			lineHeight: 1.35,
+			padding: "8px 10px",
+			background: "rgba(255,100,100,0.08)",
+			borderRadius: 10,
+			border: "1px solid rgba(255,100,100,0.18)",
+		};
+
+		const toggleRow: React.CSSProperties = {
+			display: "flex",
+			alignItems: "center",
+			gap: 6,
+			fontSize: 13,
+			color: theme.muted,
+			marginTop: 8,
+		};
+
+		const toggleBtn: React.CSSProperties = {
+			background: "none",
+			border: "none",
+			color: theme.text,
+			fontWeight: 800,
+			fontSize: 13,
+			cursor: "pointer",
+			padding: 0,
+			textDecoration: "underline",
+			textUnderlineOffset: 3,
 		};
 
 		const foot: React.CSSProperties = {
-			padding: "12px 6px 4px",
+			padding: "16px 6px 4px",
 			fontSize: 12,
 			color: theme.muted,
 			display: "flex",
@@ -134,42 +201,74 @@ export default function LoginPage() {
 			paddingBottom: 1,
 		};
 
-		return { stage, shell, header, title, subtitle, body, btn, errorText, foot, link };
-	}, [theme]);
+		return { stage, shell, header, title, subtitle, body, label, input, btn, errorText, toggleRow, toggleBtn, foot, link };
+	}, [theme, loading]);
 
 	return (
 		<main style={styles.stage}>
-			<section style={styles.shell} aria-label="Login">
+			<section style={styles.shell} aria-label={mode === "signin" ? "Sign in" : "Create account"}>
 				<header style={styles.header}>
-					<div style={styles.title}>Create your Cortex account</div>
+					<div style={styles.title}>
+						{mode === "signin" ? "Sign in to Cortex" : "Create your account"}
+					</div>
 					<div style={styles.subtitle}>
-						Temporary offline mode: this creates a local account on this device so we can save your classes.
+						{mode === "signin"
+							? "Enter your email and password to continue."
+							: "Start taking smarter notes in minutes."}
 					</div>
 				</header>
 
-				<div style={styles.body}>
-					<button
-						type="button"
-						style={styles.btn}
-						onClick={() => {
-							setError("");
-							const res = getOrCreateUserIdSafe();
-							if (!res.ok) {
-								setError(res.error);
-								return;
-							}
-							router.push("/onboarding");
-						}}
-					>
-						Continue
-					</button>
+				<form style={styles.body} onSubmit={handleSubmit}>
+					<div>
+						<label style={styles.label} htmlFor="email">Email</label>
+						<input
+							id="email"
+							type="email"
+							autoComplete="email"
+							required
+							value={email}
+							onChange={(e) => setEmail(e.target.value)}
+							placeholder="you@example.com"
+							style={styles.input}
+						/>
+					</div>
+
+					<div>
+						<label style={styles.label} htmlFor="password">Password</label>
+						<input
+							id="password"
+							type="password"
+							autoComplete={mode === "signup" ? "new-password" : "current-password"}
+							required
+							minLength={6}
+							value={password}
+							onChange={(e) => setPassword(e.target.value)}
+							placeholder="••••••••"
+							style={styles.input}
+						/>
+					</div>
 
 					{error ? <div style={styles.errorText}>{error}</div> : null}
-				</div>
+
+					<button type="submit" style={styles.btn} disabled={loading}>
+						{loading ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}
+					</button>
+
+					<div style={styles.toggleRow}>
+						{mode === "signin" ? "Don't have an account?" : "Already have an account?"}
+						<button
+							type="button"
+							style={styles.toggleBtn}
+							onClick={() => { setError(""); setMode(mode === "signin" ? "signup" : "signin"); }}
+						>
+							{mode === "signin" ? "Sign up" : "Sign in"}
+						</button>
+					</div>
+				</form>
 
 				<footer style={styles.foot}>
 					<Link href="/" prefetch style={styles.link}>
-						Home
+						← Home
 					</Link>
 				</footer>
 			</section>

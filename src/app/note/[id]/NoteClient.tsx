@@ -7,6 +7,7 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Color from "@tiptap/extension-color";
 import { TextStyle } from "@tiptap/extension-text-style";
+import Underline from "@tiptap/extension-underline";
 import FontSize from "@/lib/FontSize";
 
 import { deleteNote, findNoteById, hasWindow, saveNote, slugifyClassName } from "@/lib/notes/storage";
@@ -49,8 +50,8 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 	const [title, setTitle] = useState("");
 	const [fontSize, setFontSize] = useState(20);
 
-	// ✅ Font color state for toolbar
 	const [fontColor, setFontColor] = useState("#ecfeff");
+	const [wordCount, setWordCount] = useState(0);
 
 	const [editorReady, setEditorReady] = useState(false);
 
@@ -298,10 +299,9 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 				onToggle: (id: string) => toggleEditorCollapsed(id),
 			} as any),
 
-			// ✅ Color support (must target textStyle)
 			TextStyle,
 			Color.configure({ types: ["textStyle"] }),
-
+			Underline,
 			FontSize,
 
 			CollapseExtension.configure({
@@ -331,6 +331,8 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 		onUpdate: ({ editor }) => {
 			scheduleSave(JSON.stringify(editor.getJSON()));
 			setOutline(buildOutlineFromEditor(editor));
+			const text = editor.getText();
+			setWordCount(text.trim() ? text.trim().split(/\s+/).length : 0);
 		},
 	});
 
@@ -634,12 +636,21 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 			margin: "0 auto",
 			border: `1px solid ${theme.border}`,
 			borderRadius: 10,
-			background: "rgba(0,0,0,0.22)",
-			padding: isMobile ? "20px 16px" : "56px 64px",
+			background: "rgba(7,10,10,0.85)",
+			padding: isMobile ? "16px 14px 24px" : "48px 64px 56px",
 			boxSizing: "border-box",
 			display: "flex",
 			flexDirection: "column",
 			gap: 14,
+		};
+
+		const wordCountStyle: React.CSSProperties = {
+			fontSize: 12,
+			color: "rgba(236,254,255,0.3)",
+			textAlign: "right" as const,
+			paddingTop: 8,
+			borderTop: `1px solid rgba(255,255,255,0.06)`,
+			marginTop: 4,
 		};
 
 		// Toolbar styles (single row + background)
@@ -764,6 +775,7 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 			input,
 			docShell,
 			paper,
+			wordCountStyle,
 			toolbar,
 			toolGroup,
 			toolLabel,
@@ -874,34 +886,75 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 					min-height: 600px;
 					color: #ecfeff;
 					font-size: 20px;
-					line-height: 1.5;
+					line-height: 1.6;
 					font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
 					caret-color: #ecfeff;
 				}
-				.tiptap-editor p { margin: 0 0 2px 0; }
+				.tiptap-editor p { margin: 0 0 4px 0; }
 				.tiptap-editor h1, .tiptap-editor h2, .tiptap-editor h3 {
-					margin: 14px 0 6px 0;
+					margin: 18px 0 6px 0;
 					font-weight: 900;
 					letter-spacing: 0.2px;
 				}
-				.tiptap-editor h1 { font-size: 28px; line-height: 1.25; margin-top: 22px; }
-				.tiptap-editor h2 { font-size: 22px; line-height: 1.3;  margin-top: 18px; }
-				.tiptap-editor h3 { font-size: 18px; line-height: 1.35; margin-top: 14px; }
+				.tiptap-editor h1 { font-size: 28px; line-height: 1.25; margin-top: 26px; }
+				.tiptap-editor h2 { font-size: 22px; line-height: 1.3;  margin-top: 20px; }
+				.tiptap-editor h3 { font-size: 18px; line-height: 1.35; margin-top: 16px; }
 				.tiptap-editor h1:first-child, .tiptap-editor h2:first-child, .tiptap-editor h3:first-child {
 					margin-top: 0;
 				}
 				.tiptap-editor ul {
 					list-style-type: disc;
 					padding-left: 1.5em;
-					margin: 4px 0;
+					margin: 6px 0;
 				}
 				.tiptap-editor ol {
 					list-style-type: decimal;
 					padding-left: 1.5em;
-					margin: 4px 0;
+					margin: 6px 0;
 				}
-				.tiptap-editor li { margin: 1px 0; }
+				.tiptap-editor li { margin: 2px 0; }
 				.tiptap-editor span[style*="font-size"] { line-height: 1.4; }
+				.tiptap-editor u { text-decoration: underline; text-underline-offset: 3px; }
+				.tiptap-editor s, .tiptap-editor del { text-decoration: line-through; opacity: 0.7; }
+				.tiptap-editor code {
+					font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+					font-size: 0.875em;
+					background: rgba(255,255,255,0.1);
+					border: 1px solid rgba(255,255,255,0.15);
+					border-radius: 5px;
+					padding: 2px 6px;
+					color: #a5f3fc;
+				}
+				.tiptap-editor pre {
+					background: rgba(0,0,0,0.4);
+					border: 1px solid rgba(255,255,255,0.12);
+					border-radius: 10px;
+					padding: 14px 16px;
+					margin: 10px 0;
+					overflow-x: auto;
+				}
+				.tiptap-editor pre code {
+					background: none;
+					border: none;
+					padding: 0;
+					font-size: 14px;
+					color: #a5f3fc;
+					line-height: 1.6;
+				}
+				.tiptap-editor blockquote {
+					border-left: 3px solid rgba(22,163,74,0.6);
+					margin: 10px 0;
+					padding: 6px 14px;
+					background: rgba(22,163,74,0.06);
+					border-radius: 0 8px 8px 0;
+					color: rgba(236,254,255,0.8);
+					font-style: italic;
+				}
+				.tiptap-editor hr {
+					border: none;
+					border-top: 1px solid rgba(255,255,255,0.15);
+					margin: 18px 0;
+				}
 			`}</style>
 
 			<div style={styles.container}>
@@ -1008,6 +1061,12 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 							/>
 
 							<EditorContent editor={editor} />
+
+							{wordCount > 0 ? (
+								<div style={styles.wordCountStyle}>
+									{wordCount} {wordCount === 1 ? "word" : "words"}
+								</div>
+							) : null}
 						</div>
 					</div>
 				</div>

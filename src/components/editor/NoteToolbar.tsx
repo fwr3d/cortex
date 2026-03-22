@@ -1,7 +1,18 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { BoldIcon, ItalicIcon, BulletListIcon, OrderedListIcon } from "@/components/editor/Icons";
+import {
+	BoldIcon,
+	ItalicIcon,
+	UnderlineIcon,
+	StrikeIcon,
+	CodeIcon,
+	BlockquoteIcon,
+	BulletListIcon,
+	OrderedListIcon,
+	UndoIcon,
+	RedoIcon,
+} from "@/components/editor/Icons";
 
 const FONT_SIZES = [8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 36];
 
@@ -16,13 +27,10 @@ function stepFontSize(current: number, dir: 1 | -1): number {
 type NoteToolbarProps = {
 	editor: any;
 	theme: any;
-
 	fontSize: number;
 	setFontSize: (n: number) => void;
-
 	fontColor: string;
 	applyFontColor: (color: string) => void;
-
 	styles: any;
 };
 
@@ -44,6 +52,10 @@ export default function NoteToolbar({
 
 	const isBold = editor?.isActive("bold") ?? false;
 	const isItalic = editor?.isActive("italic") ?? false;
+	const isUnderline = editor?.isActive("underline") ?? false;
+	const isStrike = editor?.isActive("strike") ?? false;
+	const isCode = editor?.isActive("code") ?? false;
+	const isBlockquote = editor?.isActive("blockquote") ?? false;
 	const isBullets = editor?.isActive("bulletList") ?? false;
 	const isNumbers = editor?.isActive("orderedList") ?? false;
 
@@ -57,22 +69,12 @@ export default function NoteToolbar({
 		flexWrap: "nowrap",
 		justifyContent: "flex-start",
 		alignItems: "center",
-		gap: 10,
+		gap: 6,
 		overflowX: "auto",
-	};
-
-	const leftGroupStyle: React.CSSProperties = {
-		...(styles?.toolGroup ?? {}),
-		flexWrap: "nowrap",
-		minWidth: 0,
-		flex: "1 1 auto",
-		overflow: "hidden",
-	};
-
-	const rightGroupStyle: React.CSSProperties = {
-		...(styles?.toolGroup ?? {}),
-		flexWrap: "nowrap",
-		flex: "0 0 auto",
+		position: "sticky",
+		top: 0,
+		zIndex: 10,
+		scrollbarWidth: "none",
 	};
 
 	const selectStyle: React.CSSProperties = {
@@ -85,128 +87,194 @@ export default function NoteToolbar({
 		fontWeight: 800,
 		outline: "none",
 		cursor: "pointer",
+		flex: "0 0 auto",
 	};
+
+	const btn = (active: boolean): React.CSSProperties =>
+		active ? styles.toolBtnActive : styles.toolBtn;
+
+	const divider = styles.toolDivider as React.CSSProperties;
 
 	return (
 		<div style={toolbarStyle} aria-label="Editor toolbar">
-			<div style={leftGroupStyle}>
-				<span style={styles.toolLabel}>Text</span>
+			{/* Undo / Redo */}
+			<button
+				type="button"
+				style={styles.toolBtn}
+				aria-label="Undo"
+				onClick={() => editor?.chain().focus().undo().run()}
+			>
+				<UndoIcon />
+			</button>
+			<button
+				type="button"
+				style={styles.toolBtn}
+				aria-label="Redo"
+				onClick={() => editor?.chain().focus().redo().run()}
+			>
+				<RedoIcon />
+			</button>
+
+			<div style={divider} />
+
+			{/* Text style select */}
+			<select
+				value={styleValue}
+				aria-label="Text style"
+				onChange={(e) => {
+					const v = e.target.value;
+					if (v === "p") editor?.chain().focus().setParagraph().run();
+					if (v === "h1") editor?.chain().focus().setNode("heading", { level: 1 }).run();
+					if (v === "h2") editor?.chain().focus().setNode("heading", { level: 2 }).run();
+					if (v === "h3") editor?.chain().focus().setNode("heading", { level: 3 }).run();
+				}}
+				style={selectStyle}
+			>
+				<option value="p">Normal</option>
+				<option value="h1">Heading 1</option>
+				<option value="h2">Heading 2</option>
+				<option value="h3">Heading 3</option>
+			</select>
+
+			<div style={divider} />
+
+			{/* Text formatting */}
+			<button
+				type="button"
+				style={btn(isBold)}
+				aria-label="Bold"
+				onClick={() => editor?.chain().focus().toggleBold().run()}
+			>
+				<BoldIcon />
+			</button>
+			<button
+				type="button"
+				style={btn(isItalic)}
+				aria-label="Italic"
+				onClick={() => editor?.chain().focus().toggleItalic().run()}
+			>
+				<ItalicIcon />
+			</button>
+			<button
+				type="button"
+				style={btn(isUnderline)}
+				aria-label="Underline"
+				onClick={() => editor?.chain().focus().toggleUnderline().run()}
+			>
+				<UnderlineIcon />
+			</button>
+			<button
+				type="button"
+				style={btn(isStrike)}
+				aria-label="Strikethrough"
+				onClick={() => editor?.chain().focus().toggleStrike().run()}
+			>
+				<StrikeIcon />
+			</button>
+
+			<div style={divider} />
+
+			{/* Code and blockquote */}
+			<button
+				type="button"
+				style={btn(isCode)}
+				aria-label="Inline code"
+				onClick={() => editor?.chain().focus().toggleCode().run()}
+			>
+				<CodeIcon />
+			</button>
+			<button
+				type="button"
+				style={btn(isBlockquote)}
+				aria-label="Blockquote"
+				onClick={() => editor?.chain().focus().toggleBlockquote().run()}
+			>
+				<BlockquoteIcon />
+			</button>
+
+			<div style={divider} />
+
+			{/* Lists */}
+			<button
+				type="button"
+				style={btn(isBullets)}
+				aria-label="Bulleted list"
+				onClick={() => editor?.chain().focus().toggleBulletList().run()}
+			>
+				<BulletListIcon />
+			</button>
+			<button
+				type="button"
+				style={btn(isNumbers)}
+				aria-label="Numbered list"
+				onClick={() => editor?.chain().focus().toggleOrderedList().run()}
+			>
+				<OrderedListIcon />
+			</button>
+
+			<div style={divider} />
+
+			{/* Color */}
+			<select
+				value={fontColor}
+				aria-label="Font color"
+				onChange={(e) => applyFontColor(e.target.value)}
+				style={selectStyle}
+			>
+				<option value="#ecfeff">Default</option>
+				<option value="#ef4444">Red</option>
+				<option value="#f97316">Orange</option>
+				<option value="#eab308">Yellow</option>
+				<option value="#60a5fa">Blue</option>
+				<option value="#34d399">Green</option>
+				<option value="#a78bfa">Purple</option>
+			</select>
+
+			{/* Font size */}
+			<div style={styles.fontSizePill} aria-label="Font size">
+				<button
+					type="button"
+					style={styles.fontSizePillBtn}
+					aria-label="Font size down"
+					onClick={() => applyFontSize(stepFontSize(fontSize, -1))}
+				>
+					−
+				</button>
 
 				<select
-					value={styleValue}
-					aria-label="Text style"
-					onChange={(e) => {
-						const v = e.target.value;
-						if (v === "p") editor?.chain().focus().setParagraph().run();
-						if (v === "h1") editor?.chain().focus().setNode("heading", { level: 1 }).run();
-						if (v === "h2") editor?.chain().focus().setNode("heading", { level: 2 }).run();
-						if (v === "h3") editor?.chain().focus().setNode("heading", { level: 3 }).run();
+					value={fontSize}
+					onChange={(e) => applyFontSize(Number(e.target.value))}
+					aria-label="Font size select"
+					style={{
+						background: "rgba(0,0,0,0.20)",
+						color: theme.text,
+						border: "none",
+						borderLeft: `1px solid ${theme.border}`,
+						borderRight: `1px solid ${theme.border}`,
+						padding: "7px 6px",
+						fontSize: 12,
+						fontWeight: 800,
+						outline: "none",
+						cursor: "pointer",
+						minWidth: 48,
+						textAlign: "center",
 					}}
-					style={selectStyle}
 				>
-					<option value="p">Normal</option>
-					<option value="h1">Heading 1</option>
-					<option value="h2">Heading 2</option>
-					<option value="h3">Heading 3</option>
+					{FONT_SIZES.map((s) => (
+						<option key={s} value={s}>
+							{s}
+						</option>
+					))}
 				</select>
 
 				<button
 					type="button"
-					style={isBold ? styles.toolBtnActive : styles.toolBtn}
-					aria-label="Bold"
-					onClick={() => editor?.chain().focus().toggleBold().run()}
+					style={styles.fontSizePillBtn}
+					aria-label="Font size up"
+					onClick={() => applyFontSize(stepFontSize(fontSize, 1))}
 				>
-					<BoldIcon />
+					+
 				</button>
-
-				<button
-					type="button"
-					style={isItalic ? styles.toolBtnActive : styles.toolBtn}
-					aria-label="Italic"
-					onClick={() => editor?.chain().focus().toggleItalic().run()}
-				>
-					<ItalicIcon />
-				</button>
-
-				<button
-					type="button"
-					style={isBullets ? styles.toolBtnActive : styles.toolBtn}
-					aria-label="Bulleted list"
-					onClick={() => editor?.chain().focus().toggleBulletList().run()}
-				>
-					<BulletListIcon />
-				</button>
-
-				<button
-					type="button"
-					style={isNumbers ? styles.toolBtnActive : styles.toolBtn}
-					aria-label="Numbered list"
-					onClick={() => editor?.chain().focus().toggleOrderedList().run()}
-				>
-					<OrderedListIcon />
-				</button>
-
-				<div style={styles.toolDivider} />
-			</div>
-
-			<div style={rightGroupStyle}>
-				<select
-					value={fontColor}
-					aria-label="Font color"
-					onChange={(e) => applyFontColor(e.target.value)}
-					style={selectStyle}
-				>
-					<option value="#ecfeff">Default</option>
-					<option value="#ef4444">Red</option>
-					<option value="#60a5fa">Blue</option>
-					<option value="#34d399">Green</option>
-				</select>
-
-				<div style={styles.fontSizePill} aria-label="Font size">
-					<button
-						type="button"
-						style={styles.fontSizePillBtn}
-						aria-label="Font size down"
-						onClick={() => applyFontSize(stepFontSize(fontSize, -1))}
-					>
-						−
-					</button>
-
-					<select
-						value={fontSize}
-						onChange={(e) => applyFontSize(Number(e.target.value))}
-						aria-label="Font size"
-						style={{
-							background: "rgba(0,0,0,0.20)",
-							color: theme.text,
-							border: "none",
-							borderLeft: `1px solid ${theme.border}`,
-							borderRight: `1px solid ${theme.border}`,
-							padding: "7px 6px",
-							fontSize: 12,
-							fontWeight: 800,
-							outline: "none",
-							cursor: "pointer",
-							minWidth: 48,
-							textAlign: "center",
-						}}
-					>
-						{FONT_SIZES.map((s) => (
-							<option key={s} value={s}>
-								{s}
-							</option>
-						))}
-					</select>
-
-					<button
-						type="button"
-						style={styles.fontSizePillBtn}
-						aria-label="Font size up"
-						onClick={() => applyFontSize(stepFontSize(fontSize, 1))}
-					>
-						+
-					</button>
-				</div>
 			</div>
 		</div>
 	);

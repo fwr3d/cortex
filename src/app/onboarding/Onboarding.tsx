@@ -8,8 +8,8 @@ import ClassesForm from "./ClassesForm";
 import { createOnboardingStyles } from "./styles";
 
 import { CLASSES_BY_GRADE, COLLEGE_SUBJECTS, COMMON_MAJORS } from "@/features/onboarding/constants";
-import { safeJsonParse } from "@/lib/utils";
 import { formatCollegeCourse, parseCollegeCourse } from "@/features/onboarding/collegeCourse";
+import { supabase } from "@/lib/supabaseClient";
 import type {
 	CollegeSuggestion,
 	EducationLevel,
@@ -28,26 +28,29 @@ function getUserId(): string | null {
 	}
 }
 
-function onboardingKey(userId: string) {
-	return `cortex:users:${userId}:onboarding:v1`;
+async function loadOnboarding(userId: string): Promise<OnboardingPayload | null> {
+	const { data } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
+	if (!data) return null;
+	return {
+		educationLevel: data.education_level ?? "highSchool",
+		grade: data.grade ?? undefined,
+		highSchoolName: undefined,
+		collegeName: data.college_name ?? "",
+		major: data.major ?? undefined,
+		classes: data.classes ?? [],
+		savedAt: new Date().toISOString(),
+	} as OnboardingPayload;
 }
 
-function loadOnboarding(userId: string): OnboardingPayload | null {
-	try {
-		const raw = localStorage.getItem(onboardingKey(userId));
-		if (!raw) return null;
-		return safeJsonParse<OnboardingPayload>(raw);
-	} catch {
-		return null;
-	}
-}
-
-function saveOnboarding(userId: string, payload: OnboardingPayload) {
-	try {
-		localStorage.setItem(onboardingKey(userId), JSON.stringify(payload));
-	} catch {
-		// ignore
-	}
+async function saveOnboarding(userId: string, payload: OnboardingPayload) {
+	await supabase.from("profiles").upsert({
+		id: userId,
+		education_level: payload.educationLevel,
+		grade: payload.educationLevel === "highSchool" ? payload.grade ?? null : null,
+		college_name: payload.educationLevel === "college" ? payload.collegeName ?? null : null,
+		major: payload.educationLevel === "college" ? payload.major ?? null : null,
+		classes: payload.classes ?? [],
+	});
 }
 
 export default function Onboarding() {
@@ -117,22 +120,21 @@ export default function Onboarding() {
 			return;
 		}
 
-		const saved = loadOnboarding(userId);
-		if (!saved) return;
-
-		setPayload(saved);
-		setEducationLevel(saved.educationLevel);
-		setClasses(saved.classes ?? []);
-
-		if (saved.educationLevel === "highSchool") {
-			setGrade(saved.grade);
-			setHighSchoolName(saved.highSchoolName ?? "");
-		} else {
-			setCollegeName(saved.collegeName);
-			setCollegeQuery(saved.collegeName);
-			setMajor(saved.major ?? "");
-			setMajorQuery(saved.major ?? "");
-		}
+		loadOnboarding(userId).then((saved) => {
+			if (!saved) return;
+			setPayload(saved);
+			setEducationLevel(saved.educationLevel);
+			setClasses(saved.classes ?? []);
+			if (saved.educationLevel === "highSchool") {
+				setGrade(saved.grade);
+				setHighSchoolName(saved.highSchoolName ?? "");
+			} else {
+				setCollegeName(saved.collegeName);
+				setCollegeQuery(saved.collegeName);
+				setMajor(saved.major ?? "");
+				setMajorQuery(saved.major ?? "");
+			}
+		});
 	}, [router]);
 
 	// Jump directly to classes on /onboarding?step=classes
@@ -279,7 +281,7 @@ export default function Onboarding() {
 		setCourseQuickInput("");
 	};
 
-	const saveAndGoDashboard = () => {
+	const saveAndGoDashboard = async () => {
 		const userId = getUserId();
 		if (!userId) {
 			router.push("/login");
@@ -307,7 +309,7 @@ export default function Onboarding() {
 			};
 		}
 
-		saveOnboarding(userId, nextPayload);
+		await saveOnboarding(userId, nextPayload);
 		router.push("/dashboard");
 	};
 

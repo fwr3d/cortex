@@ -69,6 +69,56 @@ return(
 	</Svg>
 )
 }
+export function UnderlineIcon({ size = 18 }: IconProps) {
+	return (
+		<Svg size={size}>
+			<path d="M6 4V10C6 13.3137 8.68629 16 12 16C15.3137 16 18 13.3137 18 10V4M4 20H20" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+		</Svg>
+	);
+}
+
+export function StrikeIcon({ size = 18 }: IconProps) {
+	return (
+		<Svg size={size}>
+			<path d="M3 12H21M16.5 7C16.5 7 15.5 4.5 12 4.5C8.5 4.5 7 6.5 7 8.5C7 11 11 12 12 12M7.5 17C7.5 17 8.5 19.5 12 19.5C15.5 19.5 17 17.5 17 15.5" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/>
+		</Svg>
+	);
+}
+
+export function CodeIcon({ size = 18 }: IconProps) {
+	return (
+		<Svg size={size}>
+			<path d="M16 18L22 12L16 6M8 6L2 12L8 18" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+		</Svg>
+	);
+}
+
+export function BlockquoteIcon({ size = 18 }: IconProps) {
+	return (
+		<Svg size={size}>
+			<path fillRule="evenodd" clipRule="evenodd" d="M3 6C3 5.44772 3.44772 5 4 5H8C8.55228 5 9 5.44772 9 6V10C9 10.5523 8.55228 11 8 11H6C6 12.6569 7.34315 14 9 14V16C6.23858 16 4 13.7614 4 11V6H3ZM13 6C13 5.44772 13.4477 5 14 5H18C18.5523 5 19 5.44772 19 6V10C19 10.5523 18.5523 11 18 11H16C16 12.6569 17.3431 14 19 14V16C16.2386 16 14 13.7614 14 11V6H13Z" fill="#ffffff" opacity="0.85"/>
+		</Svg>
+	);
+}
+
+export function UndoIcon({ size = 18 }: IconProps) {
+	return (
+		<Svg size={size}>
+			<path d="M3 7V13H9" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+			<path d="M3.5 13C5 8.5 9 5.5 13.5 5.5C18.1944 5.5 22 9.30558 22 14C22 18.6944 18.1944 22.5 13.5 22.5" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/>
+		</Svg>
+	);
+}
+
+export function RedoIcon({ size = 18 }: IconProps) {
+	return (
+		<Svg size={size}>
+			<path d="M21 7V13H15" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+			<path d="M20.5 13C19 8.5 15 5.5 10.5 5.5C5.80558 5.5 2 9.30558 2 14C2 18.6944 5.80558 22.5 10.5 22.5" stroke="#ffffff" strokeWidth="2" strokeLinecap="round"/>
+		</Svg>
+	);
+}
+
 export function OrderedListIcon({ size = 18 }: IconProps) {
 	return (
 		<Svg size={size}>

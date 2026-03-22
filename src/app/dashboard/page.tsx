@@ -2,11 +2,13 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import DashboardLayout from "@/components/DashboardLayout";
 import FolderIcon from "@/components/FolderIcon";
 import type { OnboardingPayload } from "@/types";
-import { safeJsonParse, stableHash } from "@/lib/utils";
+import { stableHash } from "@/lib/utils";
 import { slugifyClassName } from "@/lib/notes/storage";
+import { supabase } from "@/lib/supabaseClient";
 import { useMobile } from "@/lib/hooks";
 import { theme } from "@/lib/theme";
 
@@ -38,30 +40,29 @@ function getSpec(className: string): Spec {
 }
 
 export default function DashboardPage() {
+	const router = useRouter();
 	const [payload, setPayload] = useState<OnboardingPayload | null>(null);
+	const [userEmail, setUserEmail] = useState<string>("");
 	const [hovered, setHovered] = useState<string | null>(null);
 	const [pressed, setPressed] = useState<string | null>(null);
 	const isMobile = useMobile();
 
 	useEffect(() => {
-		try {
-			const userId = localStorage.getItem(USER_ID_KEY);
-			if (!userId) {
-				setTimeout(() => setPayload(null), 0);
-				return;
-			}
-
-			const raw = localStorage.getItem(`cortex:users:${userId}:onboarding:v1`);
-			if (!raw) {
-				setTimeout(() => setPayload(null), 0);
-				return;
-			}
-
-			const parsed = safeJsonParse<OnboardingPayload>(raw);
-			setPayload(parsed);
-		} catch {
-			setPayload(null);
-		}
+		supabase.auth.getSession().then(async ({ data: { session } }) => {
+			if (!session) return;
+			localStorage.setItem(USER_ID_KEY, session.user.id);
+			setUserEmail(session.user.email ?? "");
+			const { data } = await supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
+			if (!data) return;
+			setPayload({
+				educationLevel: data.education_level ?? "highSchool",
+				grade: data.grade ?? undefined,
+				collegeName: data.college_name ?? "",
+				major: data.major ?? undefined,
+				classes: data.classes ?? [],
+				savedAt: new Date().toISOString(),
+			} as OnboardingPayload);
+		});
 	}, []);
 
 	const styles = useMemo(() => {
@@ -175,11 +176,24 @@ export default function DashboardPage() {
 				{ label: "Edit classes", href: "/onboarding?step=classes" },
 				{ type: "divider" },
 				{ label: "← Home", href: "/" },
+				{ type: "divider" },
+				{
+					type: "button",
+					label: "Sign out",
+					onClick: async () => {
+						await supabase.auth.signOut();
+						localStorage.removeItem(USER_ID_KEY);
+						setPayload(null);
+						router.push("/login");
+					},
+				},
 			]}
 			sidebarFooter={
 				<>
-					<div style={styles.footerLabel}>Signed in</div>
-					<div style={styles.footerValue}>{payload ? "Local user" : "Not set"}</div>
+					<div style={styles.footerLabel}>Signed in as</div>
+					<div style={{ ...styles.footerValue, fontSize: 11, wordBreak: "break-all" }}>
+						{userEmail || "—"}
+					</div>
 				</>
 			}
 		>
