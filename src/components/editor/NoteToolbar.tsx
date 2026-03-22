@@ -55,10 +55,10 @@ export default function NoteToolbar({
 	const toolbarStyle: React.CSSProperties = {
 		...(styles?.toolbar ?? {}),
 		flexWrap: "nowrap",
-		justifyContent: "space-between",
+		justifyContent: "flex-start",
 		alignItems: "center",
 		gap: 10,
-		overflow: "hidden",
+		overflowX: "auto",
 	};
 
 	const leftGroupStyle: React.CSSProperties = {

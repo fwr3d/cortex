@@ -75,6 +75,14 @@ function nextAutoTitle(classIdSlug: string, notes: NoteRow[]) {
 
 export default function ClassClient({ classId }: { classId: string }) {
 	const router = useRouter();
+	const [isMobile, setIsMobile] = React.useState(false);
+
+	React.useEffect(() => {
+		const check = () => setIsMobile(window.innerWidth < 768);
+		check();
+		window.addEventListener("resize", check);
+		return () => window.removeEventListener("resize", check);
+	}, []);
 
 	const classIdSlug = useMemo(() => slugifyClassName(classId), [classId]);
 
@@ -111,7 +119,7 @@ export default function ClassClient({ classId }: { classId: string }) {
 	const styles = useMemo(() => {
 		const stage: React.CSSProperties = {
 			minHeight: "100vh",
-			padding: "28px 18px 40px",
+			padding: isMobile ? "16px 14px 40px" : "28px 18px 40px",
 			backgroundColor: theme.bg,
 			color: theme.text,
 			fontFamily:
@@ -155,8 +163,8 @@ export default function ClassClient({ classId }: { classId: string }) {
 
 		const grid: React.CSSProperties = {
 			display: "grid",
-			gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-			gap: 18,
+			gridTemplateColumns: "repeat(auto-fit, minmax(min(160px, 100%), 1fr))",
+			gap: isMobile ? 12 : 18,
 			marginTop: 6,
 			justifyContent: "start",
 			justifyItems: "start",
@@ -216,7 +224,7 @@ export default function ClassClient({ classId }: { classId: string }) {
 		};
 
 		return { stage, container, header, h1, sub, actions, action, dangerAction, grid, noteTile, noteIconWrap, noteTitle, deletePill, empty };
-	}, [theme]);
+	}, [theme, isMobile]);
 
 	return (
 		<main style={styles.stage}>

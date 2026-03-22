@@ -42,6 +42,15 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 	const router = useRouter();
 	const searchParams = useSearchParams();
 
+	const [isMobile, setIsMobile] = useState(false);
+
+	useEffect(() => {
+		const check = () => setIsMobile(window.innerWidth < 768);
+		check();
+		window.addEventListener("resize", check);
+		return () => window.removeEventListener("resize", check);
+	}, []);
+
 	const [title, setTitle] = useState("");
 	const [fontSize, setFontSize] = useState(20);
 
@@ -63,6 +72,11 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 	// Outline collapse state (outline only)
 	const [outlineCollapsedIds, setOutlineCollapsedIds] = useState<Set<string>>(() => loadCollapsedSet(noteId));
 	const [outlineOpen, setOutlineOpen] = useState(true);
+
+	// Close outline panel by default on mobile
+	useEffect(() => {
+		if (window.innerWidth < 768) setOutlineOpen(false);
+	}, []);
 
 	// Editor collapse state (editor only)
 	const [editorCollapsedIds, setEditorCollapsedIds] = useState<Set<string>>(new Set());
@@ -449,7 +463,7 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 	const styles = useMemo(() => {
 		const stage: React.CSSProperties = {
 			minHeight: "100vh",
-			padding: "28px 18px 40px",
+			padding: isMobile ? "16px 12px 40px" : "28px 18px 40px",
 			backgroundColor: theme.bg,
 			color: theme.text,
 			fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif",
@@ -520,7 +534,7 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 
 		const mainGrid: React.CSSProperties = {
 			display: "grid",
-			gridTemplateColumns: outlineOpen ? "280px 1fr" : "1fr",
+			gridTemplateColumns: outlineOpen && !isMobile ? "280px 1fr" : "1fr",
 			gap: 12,
 			alignItems: "start",
 		};
@@ -634,12 +648,12 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 
 		const paper: React.CSSProperties = {
 			width: "min(816px, 100%)",
-			minHeight: 1056,
+			minHeight: isMobile ? "auto" : 1056,
 			margin: "0 auto",
 			border: `1px solid ${theme.border}`,
 			borderRadius: 10,
 			background: "rgba(0,0,0,0.22)",
-			padding: "56px 64px",
+			padding: isMobile ? "20px 16px" : "56px 64px",
 			boxSizing: "border-box",
 			display: "flex",
 			flexDirection: "column",
@@ -657,7 +671,7 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 			borderRadius: 12,
 			background: "rgba(0,0,0,0.22)",
 			padding: "8px 10px",
-			overflow: "hidden",
+			overflowX: "auto",
 		};
 
 		const toolGroup: React.CSSProperties = {
@@ -779,7 +793,7 @@ export default function NoteClient({ noteId }: { noteId: string }) {
 			error,
 			errorInline,
 		};
-	}, [theme, outlineOpen]);
+	}, [theme, outlineOpen, isMobile]);
 
 	const outlineTree = useMemo(() => buildOutlineTree(outline), [outline]);
 
