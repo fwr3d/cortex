@@ -10,14 +10,8 @@ type CreateUserIdResult = { ok: true; userId: string } | { ok: false; error: str
 
 function getOrCreateUserIdSafe(): CreateUserIdResult {
 	try {
-		const existing = localStorage.getItem(USER_ID_KEY);
-		if (existing) return { ok: true, userId: existing };
-
-		const id = crypto.randomUUID();
+		const id = "local-user";
 		localStorage.setItem(USER_ID_KEY, id);
-		const confirm = localStorage.getItem(USER_ID_KEY);
-		if (!confirm) return { ok: false, error: "Failed to persist local user id" };
-
 		return { ok: true, userId: id };
 	} catch {
 		return {

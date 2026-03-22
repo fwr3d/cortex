@@ -87,7 +87,7 @@ export default function ClassesForm(props: {
 									style={styles.input}
 									value={props.courseQuickInput}
 									onChange={(e) => props.setCourseQuickInput(e.target.value)}
-									placeholder="Quick add: CS 182 - Data Structures"
+									
 									aria-label="Quick add course"
 									onKeyDown={(e) => {
 										if (e.key === "Enter") {
@@ -121,7 +121,7 @@ export default function ClassesForm(props: {
 										props.setCourseSubjectQuery(v);
 										props.setCourseSubject(v);
 									}}
-									placeholder="Subject (e.g. CS)"
+									
 									aria-label="Course subject"
 								/>
 
@@ -131,7 +131,7 @@ export default function ClassesForm(props: {
 									onChange={(e) =>
 										props.setCourseNumber(e.target.value.replace(/\s+/g, ""))
 									}
-									placeholder="Number (e.g. 182)"
+									placeholder="Number"
 									inputMode="numeric"
 									aria-label="Course number"
 									onKeyDown={(e) => {
@@ -167,7 +167,7 @@ export default function ClassesForm(props: {
 									style={styles.input}
 									value={props.courseTitle}
 									onChange={(e) => props.setCourseTitle(e.target.value)}
-									placeholder="Optional title (e.g. Data Structures)"
+									
 									aria-label="Course title"
 									onKeyDown={(e) => {
 										if (e.key === "Enter") {

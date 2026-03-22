@@ -1,24 +1,7 @@
-export type NoteRow = {
-	id: string;
-	classId: string;
-	title: string;
-	updatedAt: string;
-	content: string;
-};
+import type { NoteRow } from "@/types";
+import { safeJsonParse, nowIso } from "@/lib/utils";
 
-const USER_ID_KEY = "cortex:userId";
-
-function safeJsonParse<T>(raw: string): T | null {
-	try {
-		return JSON.parse(raw) as T;
-	} catch {
-		return null;
-	}
-}
-
-function nowIso() {
-	return new Date().toISOString();
-}
+export type { NoteRow } from "@/types";
 
 export function hasWindow() {
 	return typeof window !== "undefined";
@@ -33,51 +16,41 @@ export function slugifyClassName(name: string) {
 		.slice(0, 80);
 }
 
-function getUserId(): string | null {
-	if (!hasWindow()) return null;
-	try {
-		return localStorage.getItem(USER_ID_KEY);
-	} catch {
-		return null;
-	}
+function notesBucketKey(classIdSlug: string) {
+	return `cortex:classes:${classIdSlug}:notes:v1`;
 }
 
-function notesBucketKey(userId: string, classId: string) {
-	return `cortex:users:${userId}:classes:${classId}:notes:v1`;
+function isNotesBucketKey(k: string) {
+	return k.startsWith("cortex:classes:") && k.endsWith(":notes:v1");
 }
 
-function isNotesBucketKeyForUser(k: string, userId: string) {
-	return k.startsWith(`cortex:users:${userId}:classes:`) && k.endsWith(":notes:v1");
-}
-
-function extractClassIdFromBucketKeyForUser(k: string, userId: string) {
-	const prefix = `cortex:users:${userId}:classes:`;
-	const suffix = ":notes:v1";
-	return k.slice(prefix.length, k.length - suffix.length);
-}
-
-export function getNotesBucketKeyForCurrentUser(classId: string) {
-	const userId = getUserId();
-	if (!userId) throw new Error("No user id");
-	return notesBucketKey(userId, classId);
+function extractClassIdFromBucketKey(k: string) {
+	return k.slice("cortex:classes:".length, k.length - ":notes:v1".length);
 }
 
 export function loadAllBuckets(): Array<{ key: string; classId: string; notes: NoteRow[] }> {
 	if (!hasWindow()) return [];
 
-	const userId = getUserId();
-	if (!userId) return [];
-
-	const out: Array<{ key: string; classId: string; notes: NoteRow[] }> = [];
+	const keys: string[] = [];
 	for (let i = 0; i < localStorage.length; i++) {
 		const k = localStorage.key(i);
-		if (!k || !isNotesBucketKeyForUser(k, userId)) continue;
+		if (k && isNotesBucketKey(k)) keys.push(k);
+	}
 
+	return keys.map((k) => {
 		const raw = localStorage.getItem(k);
 		const parsed = raw ? safeJsonParse<NoteRow[]>(raw) : null;
 		const notes = Array.isArray(parsed) ? parsed : [];
+		return { key: k, classId: extractClassIdFromBucketKey(k), notes };
+	});
+}
 
-		out.push({ key: k, classId: extractClassIdFromBucketKeyForUser(k, userId), notes });
+export function loadAllNotes(): NoteRow[] {
+	const out: NoteRow[] = [];
+	for (const b of loadAllBuckets()) {
+		for (const n of b.notes) {
+			out.push({ ...n, classId: n.classId || b.classId });
+		}
 	}
 	return out;
 }
@@ -102,15 +75,12 @@ export function saveNote(args: { noteId: string; title?: string; content?: strin
 	const hit = findNoteById(args.noteId);
 	if (!hit) throw new Error("Note not found");
 
-	const idx = hit.notes.findIndex((n) => n.id === args.noteId);
-	if (idx === -1) throw new Error("Note not found");
-
 	const rawLatest = localStorage.getItem(hit.bucketKey);
 	const latestParsed = rawLatest ? safeJsonParse<NoteRow[]>(rawLatest) : null;
 	const latestNotes = Array.isArray(latestParsed) ? latestParsed : hit.notes;
 
 	const latestIdx = latestNotes.findIndex((n) => n.id === args.noteId);
-	const latestRow = latestIdx >= 0 ? latestNotes[latestIdx] : hit.notes[idx];
+	const latestRow = latestIdx >= 0 ? latestNotes[latestIdx] : hit.notes.find((n) => n.id === args.noteId)!;
 
 	const updated: NoteRow = {
 		...latestRow,
@@ -136,4 +106,8 @@ export function deleteNote(noteId: string) {
 	const nextNotes = hit.notes.filter((n) => n.id !== noteId);
 	localStorage.setItem(hit.bucketKey, JSON.stringify(nextNotes));
 	return { classId: hit.classId, deletedTitle: hit.note.title || "Untitled note" };
+}
+
+export function getNotesBucketKey(classIdSlug: string) {
+	return notesBucketKey(classIdSlug);
 }

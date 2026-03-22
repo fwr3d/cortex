@@ -8,6 +8,7 @@ import ClassesForm from "./ClassesForm";
 import { createOnboardingStyles } from "./styles";
 
 import { CLASSES_BY_GRADE, COLLEGE_SUBJECTS, COMMON_MAJORS } from "@/features/onboarding/constants";
+import { safeJsonParse } from "@/lib/utils";
 import { formatCollegeCourse, parseCollegeCourse } from "@/features/onboarding/collegeCourse";
 import type {
 	CollegeSuggestion,
@@ -16,7 +17,38 @@ import type {
 	OnboardingPayload,
 	Step,
 } from "@/features/onboarding/types";
-import { getUserId, loadOnboarding, saveOnboarding } from "@/lib/storage";
+
+const USER_ID_KEY = "cortex:userId";
+
+function getUserId(): string | null {
+	try {
+		return localStorage.getItem(USER_ID_KEY);
+	} catch {
+		return null;
+	}
+}
+
+function onboardingKey(userId: string) {
+	return `cortex:users:${userId}:onboarding:v1`;
+}
+
+function loadOnboarding(userId: string): OnboardingPayload | null {
+	try {
+		const raw = localStorage.getItem(onboardingKey(userId));
+		if (!raw) return null;
+		return safeJsonParse<OnboardingPayload>(raw);
+	} catch {
+		return null;
+	}
+}
+
+function saveOnboarding(userId: string, payload: OnboardingPayload) {
+	try {
+		localStorage.setItem(onboardingKey(userId), JSON.stringify(payload));
+	} catch {
+		// ignore
+	}
+}
 
 export default function Onboarding() {
 	const router = useRouter();
@@ -74,6 +106,7 @@ export default function Onboarding() {
 		}),
 		[],
 	);
+
 	const styles = useMemo(() => createOnboardingStyles(theme), [theme]);
 
 	// Load saved onboarding (remember data)

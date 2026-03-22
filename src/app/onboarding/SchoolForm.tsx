@@ -12,7 +12,7 @@ type Styles = ReturnType<typeof import("./styles").createOnboardingStyles>;
 
 export default function SchoolForm(props: {
 	styles: Styles;
-
+	
 	educationLevel: EducationLevel;
 	setEducationLevel: (v: EducationLevel) => void;
 
@@ -98,13 +98,13 @@ export default function SchoolForm(props: {
 								}}
 								required
 							>
-								<option value="" disabled>
+								<option style ={styles.option} value="" disabled>
 									Select…
 								</option>
-								<option value="9">9</option>
-								<option value="10">10</option>
-								<option value="11">11</option>
-								<option value="12">12</option>
+								<option style ={styles.option} value="9">9</option>
+								<option style ={styles.option} value="10">10</option>
+								<option style ={styles.option} value="11">11</option>
+								<option style ={styles.option} value="12">12</option>
 							</select>
 						</div>
 

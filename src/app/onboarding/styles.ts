@@ -73,9 +73,12 @@ export function createOnboardingStyles(theme: Theme) {
 		outline: "none",
 		fontSize: 14,
 	};
-
+	const option: React.CSSProperties = {
+		background: "rgba(0, 0, 0, 0.5)",
+	};
 	const select: React.CSSProperties = {
 		...input,
+		background: "rgba(0,0,0,0.22)",
 		appearance: "none",
 	};
 
@@ -293,6 +296,7 @@ export function createOnboardingStyles(theme: Theme) {
 		btnSecondary,
 		chipRow,
 		chip,
+		option,
 		chipX,
 		suggestionWrap,
 		suggestion,

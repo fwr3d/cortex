@@ -6,52 +6,12 @@ import { useRouter } from "next/navigation";
 
 import DashboardLayout from "@/components/DashboardLayout";
 import FolderIcon from "@/components/FolderIcon";
+import type { OnboardingPayload } from "@/types";
+import { safeJsonParse, stableHash } from "@/lib/utils";
+import { slugifyClassName } from "@/lib/notes/storage";
 
 const USER_ID_KEY = "cortex:userId";
-
-type GradeLevel = 9 | 10 | 11 | 12;
-
-type OnboardingPayload =
-	| {
-			educationLevel: "highSchool";
-			grade: GradeLevel;
-			highSchoolName?: string;
-			classes: string[];
-			savedAt: string;
-	  }
-	| {
-			educationLevel: "college";
-			collegeName: string;
-			major?: string;
-			classes: string[];
-			savedAt: string;
-	  };
-
-function safeJsonParse<T>(raw: string): T | null {
-	try {
-		return JSON.parse(raw) as T;
-	} catch {
-		return null;
-	}
-}
-
-function stableHash(str: string) {
-	let h = 2166136261;
-	for (let i = 0; i < str.length; i++) {
-		h ^= str.charCodeAt(i);
-		h += (h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24);
-	}
-	return Math.abs(h >>> 0);
-}
-
-function slugifyClassName(name: string) {
-	return name
-		.toLowerCase()
-		.trim()
-		.replace(/[^a-z0-9]+/g, "-")
-		.replace(/(^-|-$)/g, "")
-		.slice(0, 80);
-}
+const SEEN_DASHBOARD_KEY = "cortex:seenDashboard:v1";
 
 type Spec = { fill: string; glyph: string };
 
@@ -85,6 +45,19 @@ export default function DashboardPage() {
 	const [pressed, setPressed] = useState<string | null>(null);
 
 	useEffect(() => {
+		// Dashboard is a one-time "orientation" page. After the first visit,
+		// default landing should be Study.
+		try {
+			const seen = localStorage.getItem(SEEN_DASHBOARD_KEY);
+			if (seen === "1") {
+				router.replace("/study");
+				return;
+			}
+			localStorage.setItem(SEEN_DASHBOARD_KEY, "1");
+		} catch {
+			// ignore
+		}
+
 		try {
 			const userId = localStorage.getItem(USER_ID_KEY);
 			if (!userId) {
@@ -103,7 +76,7 @@ export default function DashboardPage() {
 		} catch {
 			setPayload(null);
 		}
-	}, []);
+	}, [router]);
 
 	const theme = useMemo(
 		() => ({
@@ -132,7 +105,6 @@ export default function DashboardPage() {
 			justifyContent: "space-between",
 			gap: 12,
 			flexWrap: "wrap",
-			
 		};
 
 		const h1: React.CSSProperties = {
@@ -224,18 +196,10 @@ export default function DashboardPage() {
 			sidebarTitle="Cortex"
 			sidebarItems={[
 				{ label: "My Drive", href: "/dashboard", active: true },
-				{ label: "Home", href: "/" },
+				{ label: "Study session", href: "/study/session" },
 				{ label: "Edit classes", href: "/onboarding?step=classes" },
 				{ type: "divider" },
-				{
-					type: "button",
-					label: "Switch account",
-					onClick: () => {
-						localStorage.removeItem(USER_ID_KEY);
-						setPayload(null);
-						router.push("/login");
-					},
-				},
+				{ label: "← Home", href: "/" },
 			]}
 			sidebarFooter={
 				<>
@@ -289,7 +253,9 @@ export default function DashboardPage() {
 								position: "absolute",
 								left: "50%",
 								top: -10,
-								transform: isHover ? "translate(-50%, -100%) scale(1)" : "translate(-50%, -100%) scale(0.98)",
+								transform: isHover
+									? "translate(-50%, -100%) scale(1)"
+									: "translate(-50%, -100%) scale(0.98)",
 								opacity: isHover ? 1 : 0,
 								transition: "opacity 120ms ease, transform 120ms ease",
 								pointerEvents: "none",

@@ -1,541 +1,1021 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import {TextStyle} from "@tiptap/extension-text-style";
+import Color from "@tiptap/extension-color";
+import { TextStyle } from "@tiptap/extension-text-style";
 import FontSize from "@/lib/FontSize";
 
-type NoteRow = {
-    id: string;
-    classId: string;
-    title: string;
-    updatedAt: string;
-    content: string;
-};
+import { deleteNote, findNoteById, hasWindow, saveNote, slugifyClassName } from "@/lib/notes/storage";
+import type { OutlineItem } from "@/lib/notes/outline";
+import {
+	buildOutlineFromEditor,
+	copySectionLink as copySectionLinkImpl,
+	jumpToOutlineItem,
+	loadCollapsedSet,
+	saveCollapsedSet,
+	setSectionParam,
+} from "@/lib/notes/outline";
 
-const FONT_SIZES = [8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 36];
+import NoteToolbar from "@/components/editor/NoteToolbar";
+import { buildOutlineTree } from "@/components/editor/outlineTree";
 
-function stepFontSize(current: number, dir: 1 | -1): number {
-    const idx = FONT_SIZES.indexOf(current);
-    if (idx === -1) {
-        return FONT_SIZES.reduce((a, b) =>
-            Math.abs(b - current) < Math.abs(a - current) ? b : a
-        );
-    }
-    return FONT_SIZES[Math.max(0, Math.min(FONT_SIZES.length - 1, idx + dir))];
-}
+import { CollapseExtension } from "@/components/editor/collapseExtension";
+import { CollapsibleHeading } from "@/components/editor/collapsibleHeading";
 
-function safeJsonParse<T>(raw: string): T | null {
-    try { return JSON.parse(raw) as T; }
-    catch { return null; }
-}
+type SaveState = "idle" | "saving" | "saved" | "error";
 
-function nowIso() { return new Date().toISOString(); }
+type FlashcardSource = { quote: string };
+type Flashcard = { front: string; back: string; sources: FlashcardSource[] };
 
-function isNotesBucketKey(k: string) {
-    return k.startsWith("cortex:classes:") && k.endsWith(":notes:v1");
-}
+const FLASHCARDS_KEY = (noteId: string) => `cortex:notes:${noteId}:flashcards:v1`;
 
-function extractClassIdFromBucketKey(k: string) {
-    return k.slice("cortex:classes:".length, k.length - ":notes:v1".length);
-}
-
-function loadAllBuckets(): Array<{ key: string; classId: string; notes: NoteRow[] }> {
-    const out: Array<{ key: string; classId: string; notes: NoteRow[] }> = [];
-    for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (!k || !isNotesBucketKey(k)) continue;
-        const raw = localStorage.getItem(k);
-        const parsed = raw ? safeJsonParse<NoteRow[]>(raw) : null;
-        const notes = Array.isArray(parsed) ? parsed : [];
-        out.push({ key: k, classId: extractClassIdFromBucketKey(k), notes });
-    }
-    return out;
-}
-
-function findNoteById(noteId: string) {
-    for (const b of loadAllBuckets()) {
-        const found = b.notes.find((n) => n.id === noteId);
-        if (found) {
-            return { classId: found.classId || b.classId, bucketKey: b.key, notes: b.notes, note: found };
-        }
-    }
-    return null;
+function formatTime(tsMs: number) {
+	const d = new Date(tsMs);
+	return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
 export default function NoteClient({ noteId }: { noteId: string }) {
-    const router = useRouter();
-    const [title, setTitle] = useState("");
-    const [fontSize, setFontSize] = useState(20);
-    const [editorReady, setEditorReady] = useState(false);
+	const router = useRouter();
+	const searchParams = useSearchParams();
 
-    const noteData = useMemo(() => {
-        const hit = findNoteById(noteId);
-        if (!hit) return { loaded: true, notFound: true, classId: "", title: "", content: "" };
-        return {
-            loaded: true,
-            notFound: false,
-            classId: hit.classId,
-            title: hit.note.title ?? "",
-            content: hit.note.content ?? "",
-        };
-    }, [noteId]);
+	const [title, setTitle] = useState("");
+	const [fontSize, setFontSize] = useState(20);
 
-    const theme = useMemo(() => ({
-        bg: "#070a0a",
-        panel: "rgba(255,255,255,0.06)",
-        border: "rgba(255,255,255,0.12)",
-        text: "#ecfeff",
-        muted: "rgba(236,254,255,0.72)",
-        danger: "rgba(248,113,113,0.95)",
-    }), []);
+	// ✅ Font color state for toolbar
+	const [fontColor, setFontColor] = useState("#ecfeff");
 
-    const editor = useEditor({
-    immediatelyRender: false,
-    extensions: [StarterKit, TextStyle, FontSize],
-    content: "",
-    editorProps: {
-        attributes: { class: "tiptap-editor" },
-    },
-    onCreate: () => setEditorReady(true),
-    onSelectionUpdate: ({ editor }) => {
-        const attrs = editor.getAttributes("textStyle");
-        if (attrs.fontSize) {
-            const size = parseInt(attrs.fontSize);
-            if (!isNaN(size)) setFontSize(size);
-        } else {
-            setFontSize(20); // default when no mark
-        }
-    },
-    onUpdate: ({ editor }) => {
-        saveContent(JSON.stringify(editor.getJSON()));
-    },
-});
+	const [editorReady, setEditorReady] = useState(false);
 
-    // Seed content once both editor and noteData are ready
-    useEffect(() => {
-        if (!editor || !editorReady || !noteData.content) return;
-        try {
-            editor.commands.setContent(JSON.parse(noteData.content));
-        } catch {
-            editor.commands.setContent(`<p>${noteData.content}</p>`);
-        }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [editorReady, noteData]);
+	const [saveState, setSaveState] = useState<SaveState>("idle");
+	const [lastSavedAtMs, setLastSavedAtMs] = useState<number | null>(null);
+	const [lastSaveError, setLastSaveError] = useState<string | null>(null);
 
-    useEffect(() => {
-        setTitle(noteData.title);
-    }, [noteData]);
+	const [flashcardsStatus, setFlashcardsStatus] = useState<"idle" | "generating" | "error" | "ready">("idle");
+	const [flashcardsMessage, setFlashcardsMessage] = useState<string>("");
 
-    function saveContent(content: string) {
-        const hit = findNoteById(noteId);
-        if (!hit) return;
-        const idx = hit.notes.findIndex((n) => n.id === noteId);
-        if (idx === -1) return;
-        const updated: NoteRow = {
-            ...hit.notes[idx],
-            classId: hit.classId,
-            title,
-            content,
-            updatedAt: nowIso(),
-        };
-        const nextNotes = hit.notes.slice();
-        nextNotes[idx] = updated;
-        localStorage.setItem(hit.bucketKey, JSON.stringify(nextNotes));
-    }
+	// Outline data
+	const [outline, setOutline] = useState<OutlineItem[]>([]);
 
-    function saveTitle(next: string) {
-        const hit = findNoteById(noteId);
-        if (!hit) return;
-        const idx = hit.notes.findIndex((n) => n.id === noteId);
-        if (idx === -1) return;
-        const updated: NoteRow = {
-            ...hit.notes[idx],
-            classId: hit.classId,
-            title: next,
-            content: JSON.stringify(editor?.getJSON() ?? ""),
-            updatedAt: nowIso(),
-        };
-        const nextNotes = hit.notes.slice();
-        nextNotes[idx] = updated;
-        localStorage.setItem(hit.bucketKey, JSON.stringify(nextNotes));
-    }
+	// Outline collapse state (outline only)
+	const [outlineCollapsedIds, setOutlineCollapsedIds] = useState<Set<string>>(() => loadCollapsedSet(noteId));
+	const [outlineOpen, setOutlineOpen] = useState(true);
 
-    function deleteSelf() {
-        const hit = findNoteById(noteId);
-        if (!hit) return;
-        const label = hit.note.title || "Untitled note";
-        if (!window.confirm(`Delete "${label}"? This cannot be undone.`)) return;
-        const nextNotes = hit.notes.filter((n) => n.id !== noteId);
-        localStorage.setItem(hit.bucketKey, JSON.stringify(nextNotes));
-        router.push(`/class/${encodeURIComponent(hit.classId)}`);
-    }
+	// Editor collapse state (editor only)
+	const [editorCollapsedIds, setEditorCollapsedIds] = useState<Set<string>>(new Set());
 
-    function applyFontSize(next: number) {
-    setFontSize(next);
-    if (editor?.state.selection.empty) {
-        // No selection — set stored mark so next typed chars use this size
-        editor.chain().focus().setMark("textStyle", { fontSize: `${next}px` }).run();
-    } else {
-        // Apply to selected text
-        editor?.chain().focus().setMark("textStyle", { fontSize: `${next}px` }).run();
-    }
-}
+	// Refs so ProseMirror plugins always see latest values
+	const editorCollapsedIdsRef = useRef<Set<string>>(new Set());
+	const outlineRef = useRef<OutlineItem[]>(outline);
 
-    const styles = useMemo(() => {
-        const stage: React.CSSProperties = {
-            minHeight: "100vh",
-            padding: "28px 18px 40px",
-            backgroundColor: theme.bg,
-            color: theme.text,
-            fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif",
-        };
-        const container: React.CSSProperties = {
-            maxWidth: 980,
-            margin: "0 auto",
-            display: "flex",
-            flexDirection: "column",
-            gap: 14,
-        };
-        const header: React.CSSProperties = {
-            display: "flex",
-            alignItems: "baseline",
-            justifyContent: "space-between",
-            gap: 12,
-            flexWrap: "wrap",
-        };
-        const h1: React.CSSProperties = { fontSize: 20, fontWeight: 850, letterSpacing: 0.2 };
-        const sub: React.CSSProperties = { fontSize: 13, color: theme.muted, lineHeight: 1.4 };
-        const actions: React.CSSProperties = { display: "flex", gap: 10, flexWrap: "wrap" };
-        const action: React.CSSProperties = {
-            border: `1px solid ${theme.border}`,
-            borderRadius: 14,
-            padding: "10px 12px",
-            background: "transparent",
-            color: theme.text,
-            cursor: "pointer",
-            fontWeight: 700,
-            fontSize: 13,
-            textDecoration: "none",
-        };
-        const dangerAction: React.CSSProperties = { ...action, color: theme.danger };
-        const input: React.CSSProperties = {
-            width: "100%",
-            border: `1px solid ${theme.border}`,
-            borderRadius: 14,
-            background: theme.panel,
-            color: theme.text,
-            padding: "12px 14px",
-            fontSize: 15,
-            fontWeight: 850,
-            outline: "none",
-        };
-        const docShell: React.CSSProperties = {
-            border: `1px solid ${theme.border}`,
-            borderRadius: 18,
-            background: "rgba(255,255,255,0.02)",
-            boxShadow: "0 28px 80px rgba(0,0,0,0.55)",
-            padding: 18,
-        };
-        const paper: React.CSSProperties = {
-            width: "min(816px, 100%)",
-            minHeight: 1056,
-            margin: "0 auto",
-            border: `1px solid ${theme.border}`,
-            borderRadius: 10,
-            background: "rgba(0,0,0,0.22)",
-            padding: "56px 64px",
-            boxSizing: "border-box",
-            display: "flex",
-            flexDirection: "column",
-            gap: 14,
-        };
-        const toolbar: React.CSSProperties = {
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 10,
-            flexWrap: "wrap",
-            border: `1px solid ${theme.border}`,
-            borderRadius: 12,
-            background: "rgba(0,0,0,0.22)",
-            padding: "8px 10px",
-        };
-        const toolGroup: React.CSSProperties = {
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            flexWrap: "wrap",
-        };
-        const toolLabel: React.CSSProperties = {
-            fontSize: 12,
-            fontWeight: 800,
-            color: theme.muted,
-            letterSpacing: 0.2,
-            paddingRight: 4,
-        };
-        const toolDivider: React.CSSProperties = {
-            width: 1,
-            height: 22,
-            background: theme.border,
-            margin: "0 2px",
-        };
-        const toolBtn: React.CSSProperties = {
-            border: `1px solid ${theme.border}`,
-            justifyContent: "center",
-            alignItems: "center",
-            borderRadius: 10,
-            padding: 0,
-            background: "rgba(255,255,255,0.03)",
-            color: theme.text,
-            cursor: "pointer",
-            width: 30,
-            height: 30,
-            display: "flex",
-            lineHeight: 1,
-        };
-        const toolBtnActive: React.CSSProperties = {
-            ...toolBtn,
-            background: "rgba(255,255,255,0.14)",
-            border: `1px solid rgba(255,255,255,0.3)`,
-        };
-        const fontSizePill: React.CSSProperties = {
-            display: "inline-flex",
-            alignItems: "center",
-            border: `1px solid ${theme.border}`,
-            borderRadius: 10,
-            overflow: "hidden",
-            opacity: 0.85,
-        };
-        const fontSizePillBtn: React.CSSProperties = {
-            border: "none",
-            background: "rgba(255,255,255,0.03)",
-            color: theme.text,
-            padding: "7px 10px",
-            fontWeight: 900,
-            fontSize: 12,
-            lineHeight: 1,
-            cursor: "pointer",
-        };
-        const error: React.CSSProperties = {
-            border: `1px solid ${theme.border}`,
-            borderRadius: 18,
-            background: theme.panel,
-            padding: 14,
-            color: theme.muted,
-            fontSize: 13,
-            lineHeight: 1.45,
-        };
-        return {
-            stage, container, header, h1, sub, actions, action, dangerAction,
-            docShell, paper, toolbar, toolGroup, toolLabel, toolDivider,
-            toolBtn, toolBtnActive, fontSizePill, fontSizePillBtn, input, error,
-        };
-    }, [theme]);
+	useEffect(() => {
+		outlineRef.current = outline;
+	}, [outline]);
 
-    if (!noteData.loaded) return null;
+	// Note data must not touch localStorage during render; load in effect.
+	const [noteData, setNoteData] = useState<{
+		loaded: boolean;
+		notFound: boolean;
+		classId: string;
+		title: string;
+		content: string;
+	}>(() => ({
+		loaded: false,
+		notFound: false,
+		classId: "",
+		title: "",
+		content: "",
+	}));
 
-    if (noteData.notFound) {
-        return (
-            <main style={styles.stage}>
-                <div style={styles.container}>
-                    <div style={styles.header}>
-                        <div>
-                            <div style={styles.h1}>Note not found</div>
-                            <div style={styles.sub}>This note was not found in local storage.</div>
-                        </div>
-                        <div style={styles.actions}>
-                            <Link href="/dashboard" style={styles.action}>Back to dashboard</Link>
-                        </div>
-                    </div>
-                    <div style={styles.error}>
-                        This note id does not exist in any <code>cortex:classes:\*:notes:v1</code> bucket.
-                    </div>
-                </div>
-            </main>
-        );
-    }
+	// "dirty" state without causing rerenders on every keystroke
+	const isDirtyRef = useRef(false);
+	const isSavingRef = useRef(false);
+	const debounceTimerRef = useRef<number | null>(null);
+	const pendingContentRef = useRef<string | null>(null);
+	const safetyIntervalRef = useRef<number | null>(null);
 
-    const isBold = editor?.isActive("bold") ?? false;
-    const isItalic = editor?.isActive("italic") ?? false;
-    const isUnderline = editor?.isActive("underline") ?? false;
+	useEffect(() => {
+		if (!hasWindow()) return;
 
-    return (
-        <main style={styles.stage}>
-            {/* Scoped editor styles */}
-            <style>{`
-    .tiptap-editor {
-        outline: none;
-        width: 100%;
-        flex: 1 1 auto;
-        min-height: 600px;
-        color: #ecfeff;
-        font-size: 20px;           /* fixed default, not ${fontSize}px */
-        line-height: 1.5;          /* tighter, won't balloon with large text */
-        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
-        caret-color: #ecfeff;
-    }
-    .tiptap-editor p {
-        margin: 0 0 2px 0;         /* tighter paragraph gap */
-    }
-    .tiptap-editor ul {
-        list-style-type: disc;
-        padding-left: 1.5em;
-        margin: 4px 0;
-    }
-    .tiptap-editor ol {
-        list-style-type: decimal;
-        padding-left: 1.5em;
-        margin: 4px 0;
-    }
-    .tiptap-editor li { margin: 1px 0; }
-    .tiptap-editor span[style*="font-size"] {
-        line-height: 1.4;          /* large text stays tight */
-    }
-`}</style>
+		const hit = findNoteById(noteId);
+		if (!hit) {
+			setNoteData({ loaded: true, notFound: true, classId: "", title: "", content: "" });
+			return;
+		}
 
-            <div style={styles.container}>
-                <header style={styles.header}>
-                    <div>
-                        <div style={styles.h1}>Note</div>
-                        <div style={styles.sub}>{noteData.classId}</div>
-                    </div>
-                    <div style={styles.actions}>
-                        <Link href={`/class/${encodeURIComponent(noteData.classId)}`} style={styles.action}>
-                            Back to class
-                        </Link>
-                        <button type="button" style={styles.dangerAction} onClick={deleteSelf}>
-                            Delete
-                        </button>
-                        <button
-                            type="button"
-                            style={styles.action}
-                            onClick={() => router.push(`/class/${encodeURIComponent(noteData.classId)}`)}
-                        >
-                            Done
-                        </button>
-                    </div>
-                </header>
+		setNoteData({
+			loaded: true,
+			notFound: false,
+			classId: hit.classId,
+			title: hit.note.title ?? "",
+			content: hit.note.content ?? "",
+		});
+	}, [noteId]);
 
-                <div style={styles.docShell}>
-                    <div style={styles.paper}>
-                        <input
-                            value={title}
-                            onChange={(e) => {
-                                setTitle(e.target.value);
-                                saveTitle(e.target.value);
-                            }}
-                            placeholder="Untitled note"
-                            style={styles.input}
-                        />
+	const theme = useMemo(
+		() => ({
+			bg: "#070a0a",
+			panel: "rgba(255,255,255,0.06)",
+			border: "rgba(255,255,255,0.12)",
+			text: "#ecfeff",
+			muted: "rgba(236,254,255,0.72)",
+			danger: "rgba(248,113,113,0.95)",
+			accent: "#16a34a",
+		}),
+		[],
+	);
 
-                        <div style={styles.toolbar} aria-label="Editor toolbar">
-                            {/* Formatting group */}
-                            <div style={styles.toolGroup}>
-                                <span style={styles.toolLabel}>Text</span>
+	function clearDebounceTimer() {
+		if (debounceTimerRef.current != null) {
+			window.clearTimeout(debounceTimerRef.current);
+			debounceTimerRef.current = null;
+		}
+	}
 
-                                <button
-                                    type="button"
-                                    style={isBold ? styles.toolBtnActive : styles.toolBtn}
-                                    aria-label="Bold"
-                                    onClick={() => editor?.chain().focus().toggleBold().run()}
-                                >
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                                        <path fillRule="evenodd" clipRule="evenodd" d="M9 7V11H13C14.1046 11 15 10.1046 15 9C15 7.89543 14.1046 7 13 7H9ZM15.9365 11.7161C16.5966 11.0028 17 10.0485 17 9C17 6.79086 15.2091 5 13 5H8.5C7.67157 5 7 5.67157 7 6.5V12V18.5C7 19.3284 7.67157 20 8.5 20H13.5C15.9853 20 18 17.9853 18 15.5C18 13.9126 17.178 12.5171 15.9365 11.7161ZM13 13H9V18H13.5C14.8807 18 16 16.8807 16 15.5C16 14.1193 14.8807 13 13.5 13H13Z" fill="#ffffff"/>
-                                    </svg>
-                                </button>
+	function clearSafetyInterval() {
+		if (safetyIntervalRef.current != null) {
+			window.clearInterval(safetyIntervalRef.current);
+			safetyIntervalRef.current = null;
+		}
+	}
 
-                                <button
-                                    type="button"
-                                    style={isItalic ? styles.toolBtnActive : styles.toolBtn}
-                                    aria-label="Italic"
-                                    onClick={() => editor?.chain().focus().toggleItalic().run()}
-                                >
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                                        <path fillRule="evenodd" clipRule="evenodd" d="M8 6C8 5.44772 8.44772 5 9 5H12H15C15.5523 5 16 5.44772 16 6C16 6.55228 15.5523 7 15 7H12.8579L11.1656 18H13C13.5523 18 14 18.4477 14 19C14 19.5523 13.5523 20 13 20H10H7C6.44772 20 6 19.5523 6 19C6 18.4477 6.44772 18 7 18H9.14208L10.8344 7H9C8.44772 7 8 6.55228 8 6Z" fill="#ffffff"/>
-                                    </svg>
-                                </button>
+	function scheduleSave(nextContent: string) {
+		pendingContentRef.current = nextContent;
+		isDirtyRef.current = true;
 
-                                <div style={styles.toolDivider} />
-                            </div>
+		setLastSaveError(null);
+		setSaveState("saving");
 
-                            {/* Font size + lists group */}
-                            <div style={styles.toolGroup}>
-                                <div style={styles.fontSizePill} aria-label="Font size">
-                                    <button
-                                        type="button"
-                                        style={styles.fontSizePillBtn}
-                                        aria-label="Font size down"
-                                        onClick={() => applyFontSize(stepFontSize(fontSize, -1))}
-                                    >
-                                        −
-                                    </button>
-                                    <select
-                                        value={fontSize}
-                                        onChange={(e) => applyFontSize(Number(e.target.value))}
-                                        aria-label="Font size"
-                                        style={{
-                                            background: "rgba(0,0,0,0.20)",
-                                            color: theme.text,
-                                            border: "none",
-                                            borderLeft: `1px solid ${theme.border}`,
-                                            borderRight: `1px solid ${theme.border}`,
-                                            padding: "7px 6px",
-                                            fontSize: 12,
-                                            fontWeight: 800,
-                                            outline: "none",
-                                            cursor: "pointer",
-                                            minWidth: 48,
-                                            textAlign: "center",
-                                        }}
-                                    >
-                                        {FONT_SIZES.map((s) => (
-                                            <option key={s} value={s}>{s}</option>
-                                        ))}
-                                    </select>
-                                    <button
-                                        type="button"
-                                        style={styles.fontSizePillBtn}
-                                        aria-label="Font size up"
-                                        onClick={() => applyFontSize(stepFontSize(fontSize, 1))}
-                                    >
-                                        +
-                                    </button>
-                                </div>
+		clearDebounceTimer();
+		debounceTimerRef.current = window.setTimeout(() => {
+			void flushSave("debounce");
+		}, 700);
+	}
 
-                                <div style={styles.toolDivider} />
+	async function flushSave(reason: "debounce" | "manual" | "visibility" | "interval" | "blur") {
+		if (!isDirtyRef.current) return;
+		if (isSavingRef.current) return; // prevent concurrent saves
 
-                               <button
-	type="button"
-	style={editor?.isActive("bulletList") ? styles.toolBtnActive : styles.toolBtn}
-	aria-label="Bulleted list"
-	onClick={() => editor?.chain().focus().toggleBulletList().run()}
->
-	<svg width="800px" height="800px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path fillRule="evenodd" clipRule="evenodd" d="M6.25 7C6.25 7.69036 5.69036 8.25 5 8.25C4.30964 8.25 3.75 7.69036 3.75 7C3.75 6.30964 4.30964 5.75 5 5.75C5.69036 5.75 6.25 6.30964 6.25 7ZM9 6C8.44771 6 8 6.44772 8 7C8 7.55228 8.44771 8 9 8H19C19.5523 8 20 7.55228 20 7C20 6.44772 19.5523 6 19 6H9ZM9 11C8.44771 11 8 11.4477 8 12C8 12.5523 8.44771 13 9 13H19C19.5523 13 20 12.5523 20 12C20 11.4477 19.5523 11 19 11H9ZM9 16C8.44771 16 8 16.4477 8 17C8 17.5523 8.44771 18 9 18H19C19.5523 18 20 17.5523 20 17C20 16.4477 19.5523 16 19 16H9ZM5 13.25C5.69036 13.25 6.25 12.6904 6.25 12C6.25 11.3096 5.69036 10.75 5 10.75C4.30964 10.75 3.75 11.3096 3.75 12C3.75 12.6904 4.30964 13.25 5 13.25ZM5 18.25C5.69036 18.25 6.25 17.6904 6.25 17C6.25 16.3096 5.69036 15.75 5 15.75C4.30964 15.75 3.75 16.3096 3.75 17C3.75 17.6904 4.30964 18.25 5 18.25Z" fill="#ffffff"/>
-</svg>
-</button>
+		const content =
+			pendingContentRef.current ??
+			(() => {
+				const json = editor?.getJSON();
+				return json ? JSON.stringify(json) : null;
+			})();
 
-                                <button
-	type="button"
-	style={editor?.isActive("orderedList") ? styles.toolBtnActive : styles.toolBtn}
-	aria-label="Numbered list"
-	onClick={() => editor?.chain().focus().toggleOrderedList().run()}
->
-	<svg width="800px" height="800px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path fillRule="evenodd" clipRule="evenodd" d="M5.99999 5.5C5.99999 5.22386 5.77613 5 5.49999 5C5.22385 5 4.99999 5.22386 4.99999 5.5V8.5C4.99999 8.77614 5.22385 9 5.49999 9C5.77613 9 5.99999 8.77614 5.99999 8.5V5.5ZM5.25046 11.2673C5.38308 11.1789 5.55766 11.1864 5.68212 11.286C5.85245 11.4223 5.86653 11.6764 5.71228 11.8306L4.39644 13.1464C4.25344 13.2894 4.21066 13.5045 4.28805 13.6913C4.36544 13.8782 4.54776 14 4.74999 14H6.49999C6.77613 14 6.99999 13.7761 6.99999 13.5C6.99999 13.2239 6.77613 13 6.49999 13H5.9571L6.41939 12.5377C6.99508 11.962 6.94256 11.0137 6.30681 10.5051C5.8423 10.1335 5.19072 10.1053 4.69576 10.4352L4.47264 10.584C4.24288 10.7372 4.18079 11.0476 4.33397 11.2773C4.48714 11.5071 4.79758 11.5692 5.02734 11.416L5.25046 11.2673ZM4.74999 15.5C4.47385 15.5 4.24999 15.7239 4.24999 16C4.24999 16.2761 4.47385 16.5 4.74999 16.5H5.29288L4.64644 17.1464C4.50344 17.2894 4.46066 17.5045 4.53805 17.6913C4.61544 17.8782 4.79776 18 4.99999 18H5.74999C5.88806 18 5.99999 18.1119 5.99999 18.25C5.99999 18.3881 5.88806 18.5 5.74999 18.5H4.74999C4.47385 18.5 4.24999 18.7239 4.24999 19C4.24999 19.2761 4.47385 19.5 4.74999 19.5H5.74999C6.44035 19.5 6.99999 18.9404 6.99999 18.25C6.99999 17.6972 6.6412 17.2283 6.1438 17.0633L6.85355 16.3536C6.99654 16.2106 7.03932 15.9955 6.96193 15.8087C6.88454 15.6218 6.70222 15.5 6.49999 15.5H4.74999ZM8.99999 6C8.44771 6 7.99999 6.44772 7.99999 7C7.99999 7.55228 8.44771 8 8.99999 8H19C19.5523 8 20 7.55228 20 7C20 6.44772 19.5523 6 19 6H8.99999ZM8.99999 11C8.44771 11 7.99999 11.4477 7.99999 12C7.99999 12.5523 8.44771 13 8.99999 13H19C19.5523 13 20 12.5523 20 12C20 11.4477 19.5523 11 19 11H8.99999ZM8.99999 16C8.44771 16 7.99999 16.4477 7.99999 17C7.99999 17.5523 8.44771 18 8.99999 18H19C19.5523 18 20 17.5523 20 17C20 16.4477 19.5523 16 19 16H8.99999Z" fill="#ffffff"/>
-</svg>
-</button>
-                            </div>
-                        </div>
+		if (!content) return;
 
-                        <EditorContent editor={editor} />
-                    </div>
-                </div>
-            </div>
-        </main>
-    );
+		isSavingRef.current = true;
+		try {
+			setSaveState("saving");
+			const updated = saveNote({ noteId, content });
+
+			isDirtyRef.current = false;
+			pendingContentRef.current = null;
+
+			setSaveState("saved");
+			setLastSavedAtMs(Date.parse(updated.updatedAt) || Date.now());
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : "Save failed";
+			setSaveState("error");
+			setLastSaveError(msg);
+
+			isDirtyRef.current = true;
+			pendingContentRef.current = content;
+		} finally {
+			isSavingRef.current = false;
+			if (reason !== "debounce") clearDebounceTimer();
+		}
+	}
+
+	function retrySave() {
+		void flushSave("manual");
+	}
+
+	async function generateFlashcards() {
+		const controller = new AbortController();
+		const timeoutId = window.setTimeout(() => controller.abort(), 30000);
+
+		try {
+			setFlashcardsStatus("generating");
+			setFlashcardsMessage("");
+
+			const noteText = (() => {
+				const json = editor?.getJSON();
+				if (json) return JSON.stringify(json);
+				return noteData.content ?? "";
+			})();
+
+			const res = await fetch("/api/flashcards", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ noteId, noteText, maxCards: 10 }),
+				signal: controller.signal,
+			});
+
+			if (!res.ok) throw new Error(`Flashcard generation failed (${res.status})`);
+			const json = (await res.json()) as {
+				cards: Flashcard[];
+				generated: number;
+				skipped: number;
+				message?: string;
+			};
+
+			localStorage.setItem(
+				FLASHCARDS_KEY(noteId),
+				JSON.stringify({ cards: json.cards ?? [], message: json.message ?? "" }),
+			);
+
+			if ((json.cards ?? []).length === 0) {
+				setFlashcardsStatus("error");
+				setFlashcardsMessage(json.message ?? "Not enough signal to generate flashcards yet.");
+				return;
+			}
+
+			setFlashcardsStatus("ready");
+			setFlashcardsMessage(json.message ?? `Generated ${(json.cards ?? []).length} flashcards.`);
+			router.push(`/note/${noteId}/flashcards`);
+		} catch (e) {
+			const msg =
+				e instanceof Error
+					? e.name === "AbortError"
+						? "Flashcard generation timed out. Try again."
+						: e.message
+					: "Flashcard generation failed";
+			setFlashcardsStatus("error");
+			setFlashcardsMessage(msg);
+		} finally {
+			window.clearTimeout(timeoutId);
+		}
+	}
+
+	// Outline-only collapse handlers
+	function toggleOutlineCollapsed(id: string) {
+		setOutlineCollapsedIds((prev) => {
+			const next = new Set(prev);
+			if (next.has(id)) next.delete(id);
+			else next.add(id);
+			saveCollapsedSet(noteId, next);
+			return next;
+		});
+	}
+
+	function collapseAllOutline() {
+		const all = new Set(outline.map((o) => o.id));
+		setOutlineCollapsedIds(all);
+		saveCollapsedSet(noteId, all);
+	}
+
+	function expandAllOutline() {
+		const none = new Set<string>();
+		setOutlineCollapsedIds(none);
+		saveCollapsedSet(noteId, none);
+	}
+
+	// Editor-only collapse handler (sync ref immediately)
+	function toggleEditorCollapsed(id: string) {
+		setEditorCollapsedIds((prev) => {
+			const next = new Set(prev);
+			if (next.has(id)) next.delete(id);
+			else next.add(id);
+
+			editorCollapsedIdsRef.current = next;
+			return next;
+		});
+	}
+
+	function jumpTo(item: OutlineItem) {
+		jumpToOutlineItem(editor, item);
+		setSectionParam(item.id);
+	}
+
+	const editor = useEditor({
+		immediatelyRender: false,
+		extensions: [
+			StarterKit.configure({ heading: false }),
+			CollapsibleHeading.configure({
+				levels: [1, 2, 3],
+				getIsCollapsed: (id: string) => editorCollapsedIdsRef.current.has(id),
+				onToggle: (id: string) => toggleEditorCollapsed(id),
+			}),
+
+			// ✅ Color support (must target textStyle)
+			TextStyle,
+			Color.configure({ types: ["textStyle"] }),
+
+			FontSize,
+
+			CollapseExtension.configure({
+				getState: () => ({
+					collapsedIds: editorCollapsedIdsRef.current,
+					headings: outlineRef.current,
+				}),
+			}),
+		],
+		content: "",
+		editorProps: { attributes: { class: "tiptap-editor" } },
+		onCreate: () => setEditorReady(true),
+		onSelectionUpdate: ({ editor }) => {
+			const attrs = editor.getAttributes("textStyle");
+
+			if (attrs.fontSize) {
+				const size = parseInt(attrs.fontSize);
+				if (!isNaN(size)) setFontSize(size);
+			} else {
+				setFontSize(20);
+			}
+
+			if (attrs.color && typeof attrs.color === "string") {
+				setFontColor(attrs.color);
+			}
+		},
+		onUpdate: ({ editor }) => {
+			scheduleSave(JSON.stringify(editor.getJSON()));
+			setOutline(buildOutlineFromEditor(editor));
+		},
+	});
+
+	function applyFontColor(next: string) {
+		setFontColor(next);
+		editor?.chain().focus().setColor(next).run();
+	}
+
+	// Seed content once both editor and noteData are ready
+	useEffect(() => {
+		if (!editor || !editorReady) return;
+		if (!noteData.content) return;
+
+		try {
+			editor.commands.setContent(JSON.parse(noteData.content));
+		} catch {
+			editor.commands.setContent(`<p>${noteData.content}</p>`);
+		}
+
+		setOutline(buildOutlineFromEditor(editor));
+
+		const section = searchParams.get("section");
+		if (section) {
+			const items = buildOutlineFromEditor(editor);
+			const hit = items.find((x) => x.id === section);
+			if (hit) setTimeout(() => jumpTo(hit), 50);
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [editorReady, noteData.loaded]);
+
+	useEffect(() => {
+		setTitle(noteData.title);
+	}, [noteData.title]);
+
+	// Save-on-tab-hidden + beforeunload + timer safety net
+	useEffect(() => {
+		function onVisibilityChange() {
+			if (document.visibilityState === "hidden") {
+				void flushSave("visibility");
+			}
+		}
+
+		function onBeforeUnload() {
+			void flushSave("visibility");
+		}
+
+		document.addEventListener("visibilitychange", onVisibilityChange);
+		window.addEventListener("beforeunload", onBeforeUnload);
+
+		clearSafetyInterval();
+		safetyIntervalRef.current = window.setInterval(() => {
+			void flushSave("interval");
+		}, 15000);
+
+		return () => {
+			document.removeEventListener("visibilitychange", onVisibilityChange);
+			window.removeEventListener("beforeunload", onBeforeUnload);
+			clearDebounceTimer();
+			clearSafetyInterval();
+		};
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [editor]);
+
+	function saveTitleValue(next: string) {
+		setTitle(next);
+
+		const editorJson = editor?.getJSON();
+		const content = editorJson ? JSON.stringify(editorJson) : pendingContentRef.current ?? noteData.content ?? "";
+
+		try {
+			setSaveState("saving");
+			setLastSaveError(null);
+
+			const updated = saveNote({ noteId, title: next, content });
+
+			isDirtyRef.current = false;
+			pendingContentRef.current = null;
+
+			setSaveState("saved");
+			setLastSavedAtMs(Date.parse(updated.updatedAt) || Date.now());
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : "Save failed";
+			setSaveState("error");
+			setLastSaveError(msg);
+
+			isDirtyRef.current = true;
+			pendingContentRef.current = content;
+		} finally {
+			clearDebounceTimer();
+		}
+	}
+
+	function deleteSelf() {
+		try {
+			const hit = findNoteById(noteId);
+			if (!hit) return;
+
+			const label = hit.note.title || "Untitled note";
+			if (!window.confirm(`Delete "${label}"? This cannot be undone.`)) return;
+
+			const { classId } = deleteNote(noteId);
+			router.push(`/class/${slugifyClassName(classId)}`);
+		} catch {
+			// ignore
+		}
+	}
+
+	function onEditorBlurCapture() {
+		void flushSave("blur");
+	}
+
+	const styles = useMemo(() => {
+		const stage: React.CSSProperties = {
+			minHeight: "100vh",
+			padding: "28px 18px 40px",
+			backgroundColor: theme.bg,
+			color: theme.text,
+			fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif",
+		};
+
+		const container: React.CSSProperties = {
+			maxWidth: 1060,
+			margin: "0 auto",
+			display: "flex",
+			flexDirection: "column",
+			gap: 14,
+		};
+
+		const header: React.CSSProperties = {
+			display: "flex",
+			alignItems: "baseline",
+			justifyContent: "space-between",
+			gap: 12,
+			flexWrap: "wrap",
+		};
+
+		const h1: React.CSSProperties = { fontSize: 20, fontWeight: 850, letterSpacing: 0.2 };
+		const sub: React.CSSProperties = { fontSize: 13, color: theme.muted, lineHeight: 1.4 };
+
+		const status: React.CSSProperties = {
+			fontSize: 12,
+			fontWeight: 800,
+			color: theme.muted,
+			lineHeight: 1.2,
+			marginTop: 4,
+		};
+
+		const statusError: React.CSSProperties = { ...status, color: theme.danger };
+
+		const actions: React.CSSProperties = { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" };
+
+		const action: React.CSSProperties = {
+			border: `1px solid ${theme.border}`,
+			borderRadius: 14,
+			padding: "10px 12px",
+			background: "transparent",
+			color: theme.text,
+			cursor: "pointer",
+			fontWeight: 700,
+			fontSize: 13,
+			textDecoration: "none",
+		};
+
+		const primaryAction: React.CSSProperties = {
+			...action,
+			border: `1px solid rgba(22,163,74,0.55)`,
+			background: "rgba(22,163,74,0.12)",
+		};
+
+		const dangerAction: React.CSSProperties = { ...action, color: theme.danger };
+
+		const retryBtn: React.CSSProperties = {
+			border: `1px solid ${theme.border}`,
+			borderRadius: 12,
+			padding: "6px 10px",
+			background: "rgba(0,0,0,0.22)",
+			color: theme.text,
+			cursor: "pointer",
+			fontWeight: 800,
+			fontSize: 12,
+			marginLeft: 8,
+		};
+
+		const mainGrid: React.CSSProperties = {
+			display: "grid",
+			gridTemplateColumns: outlineOpen ? "280px 1fr" : "1fr",
+			gap: 12,
+			alignItems: "start",
+		};
+
+		const outlinePanel: React.CSSProperties = {
+			border: `1px solid ${theme.border}`,
+			borderRadius: 18,
+			background: theme.panel,
+			padding: 12,
+			position: "sticky",
+			top: 18,
+			maxHeight: "calc(100vh - 36px)",
+			overflow: "auto",
+		};
+
+		const outlineHeader: React.CSSProperties = {
+			display: "flex",
+			alignItems: "center",
+			justifyContent: "space-between",
+			gap: 10,
+		};
+
+		const outlineTitle: React.CSSProperties = {
+			fontSize: 12,
+			fontWeight: 900,
+			letterSpacing: 0.2,
+			color: theme.muted,
+			textTransform: "uppercase",
+		};
+
+		const outlineTools: React.CSSProperties = { display: "flex", gap: 8, flexWrap: "wrap" };
+
+		const outlineToolBtn: React.CSSProperties = {
+			border: `1px solid rgba(255,255,255,0.12)`,
+			borderRadius: 10,
+			padding: "6px 8px",
+			background: "rgba(0,0,0,0.16)",
+			color: theme.text,
+			cursor: "pointer",
+			fontWeight: 800,
+			fontSize: 12,
+		};
+
+		const outlineRow: React.CSSProperties = {
+			display: "flex",
+			alignItems: "center",
+			justifyContent: "space-between",
+			gap: 8,
+			borderRadius: 12,
+			padding: "8px 8px",
+			border: `1px solid rgba(255,255,255,0.08)`,
+			background: "rgba(0,0,0,0.18)",
+			marginTop: 8,
+		};
+
+		const outlineItemText: React.CSSProperties = {
+			display: "flex",
+			alignItems: "center",
+			gap: 8,
+			minWidth: 0,
+		};
+
+		const outlineLinkBtn: React.CSSProperties = {
+			border: "none",
+			background: "transparent",
+			color: theme.text,
+			cursor: "pointer",
+			fontWeight: 850,
+			fontSize: 12,
+			textAlign: "left",
+			padding: 0,
+			whiteSpace: "nowrap",
+			overflow: "hidden",
+			textOverflow: "ellipsis",
+			maxWidth: 150,
+		};
+
+		const outlineRight: React.CSSProperties = { display: "flex", gap: 6 };
+
+		const miniBtn: React.CSSProperties = {
+			border: `1px solid rgba(255,255,255,0.12)`,
+			borderRadius: 10,
+			padding: "6px 8px",
+			background: "rgba(0,0,0,0.16)",
+			color: theme.text,
+			cursor: "pointer",
+			fontWeight: 900,
+			fontSize: 12,
+			lineHeight: 1,
+		};
+
+		const input: React.CSSProperties = {
+			width: "100%",
+			border: `1px solid ${theme.border}`,
+			borderRadius: 14,
+			background: theme.panel,
+			color: theme.text,
+			padding: "12px 14px",
+			fontSize: 15,
+			fontWeight: 850,
+			outline: "none",
+		};
+
+		const docShell: React.CSSProperties = {
+			border: `1px solid ${theme.border}`,
+			borderRadius: 18,
+			background: "rgba(255,255,255,0.02)",
+			boxShadow: "0 28px 80px rgba(0,0,0,0.55)",
+			padding: 18,
+		};
+
+		const paper: React.CSSProperties = {
+			width: "min(816px, 100%)",
+			minHeight: 1056,
+			margin: "0 auto",
+			border: `1px solid ${theme.border}`,
+			borderRadius: 10,
+			background: "rgba(0,0,0,0.22)",
+			padding: "56px 64px",
+			boxSizing: "border-box",
+			display: "flex",
+			flexDirection: "column",
+			gap: 14,
+		};
+
+		// Toolbar styles (single row + background)
+		const toolbar: React.CSSProperties = {
+			display: "flex",
+			alignItems: "center",
+			justifyContent: "space-between",
+			gap: 10,
+			flexWrap: "nowrap",
+			border: `1px solid ${theme.border}`,
+			borderRadius: 12,
+			background: "rgba(0,0,0,0.22)",
+			padding: "8px 10px",
+			overflow: "hidden",
+		};
+
+		const toolGroup: React.CSSProperties = {
+			display: "flex",
+			alignItems: "center",
+			gap: 8,
+			flexWrap: "nowrap",
+			minWidth: 0,
+		};
+
+		const toolLabel: React.CSSProperties = {
+			fontSize: 12,
+			fontWeight: 800,
+			color: theme.muted,
+			letterSpacing: 0.2,
+			paddingRight: 4,
+			whiteSpace: "nowrap",
+		};
+
+		const toolDivider: React.CSSProperties = {
+			width: 1,
+			height: 22,
+			background: theme.border,
+			margin: "0 2px",
+			flex: "0 0 auto",
+		};
+
+		const toolBtn: React.CSSProperties = {
+			border: `1px solid ${theme.border}`,
+			justifyContent: "center",
+			alignItems: "center",
+			borderRadius: 10,
+			padding: 0,
+			background: "rgba(255,255,255,0.03)",
+			color: theme.text,
+			cursor: "pointer",
+			width: 30,
+			height: 30,
+			display: "flex",
+			lineHeight: 1,
+			flex: "0 0 auto",
+		};
+
+		const toolBtnActive: React.CSSProperties = {
+			...toolBtn,
+			background: "rgba(255,255,255,0.14)",
+			border: "1px solid rgba(255,255,255,0.3)",
+		};
+
+		const fontSizePill: React.CSSProperties = {
+			display: "inline-flex",
+			alignItems: "center",
+			border: `1px solid ${theme.border}`,
+			borderRadius: 10,
+			overflow: "hidden",
+			opacity: 0.95,
+			flex: "0 0 auto",
+		};
+
+		const fontSizePillBtn: React.CSSProperties = {
+			border: "none",
+			background: "rgba(255,255,255,0.03)",
+			color: theme.text,
+			padding: "7px 10px",
+			fontWeight: 900,
+			fontSize: 12,
+			lineHeight: 1,
+			cursor: "pointer",
+			flex: "0 0 auto",
+		};
+
+		const error: React.CSSProperties = {
+			border: `1px solid ${theme.border}`,
+			borderRadius: 18,
+			background: theme.panel,
+			padding: 14,
+			color: theme.muted,
+			fontSize: 13,
+			lineHeight: 1.45,
+		};
+
+		const errorInline: React.CSSProperties = { marginLeft: 10 };
+
+		return {
+			stage,
+			container,
+			header,
+			h1,
+			sub,
+			status,
+			statusError,
+			actions,
+			action,
+			primaryAction,
+			dangerAction,
+			retryBtn,
+			mainGrid,
+			outlinePanel,
+			outlineHeader,
+			outlineTitle,
+			outlineTools,
+			outlineToolBtn,
+			outlineRow,
+			outlineItemText,
+			outlineLinkBtn,
+			outlineRight,
+			miniBtn,
+			input,
+			docShell,
+			paper,
+			toolbar,
+			toolGroup,
+			toolLabel,
+			toolDivider,
+			toolBtn,
+			toolBtnActive,
+			fontSizePill,
+			fontSizePillBtn,
+			error,
+			errorInline,
+		};
+	}, [theme, outlineOpen]);
+
+	const outlineTree = useMemo(() => buildOutlineTree(outline), [outline]);
+
+	if (!noteData.loaded) return null;
+
+	if (noteData.notFound) {
+		return (
+			<main style={styles.stage}>
+				<div style={styles.container}>
+					<div style={styles.header}>
+						<div>
+							<div style={styles.h1}>Note not found</div>
+							<div style={styles.sub}>This note was not found in local storage.</div>
+						</div>
+						<div style={styles.actions}>
+							<Link href="/dashboard" style={styles.action}>
+								Back to dashboard
+							</Link>
+						</div>
+					</div>
+
+					<div style={styles.error}>
+						This note id does not exist in any <code>cortex:classes:*:notes:v1</code> bucket.
+					</div>
+				</div>
+			</main>
+		);
+	}
+
+	const statusText = (() => {
+		if (saveState === "saving") return "Saving…";
+		if (saveState === "saved" && lastSavedAtMs) return `Saved ${formatTime(lastSavedAtMs)}`;
+		if (saveState === "error") return "Couldn’t save";
+		return "";
+	})();
+
+	function outlineNodeIsCollapsible(node: any) {
+		const hasChildren = (node.children?.length ?? 0) > 0;
+		const bodyFrom = node.pos + node.nodeSize;
+		const hasBody = (node.endPos ?? bodyFrom) > bodyFrom;
+		return hasChildren || hasBody;
+	}
+
+	function renderOutlineNode(node: any) {
+		const hasChildren = (node.children?.length ?? 0) > 0;
+		const isCollapsed = outlineCollapsedIds.has(node.id);
+		const collapsible = outlineNodeIsCollapsible(node);
+
+		return (
+			<div
+				key={node.id}
+				style={{
+					marginTop: 8,
+					marginLeft: (node.level - 1) * 12,
+				}}
+			>
+				<div style={styles.outlineRow}>
+					<div style={styles.outlineItemText}>
+						{collapsible ? (
+							<button type="button" style={styles.miniBtn} onClick={() => toggleOutlineCollapsed(node.id)}>
+								{isCollapsed ? "▶" : "▼"}
+							</button>
+						) : (
+							<div style={{ width: 34 }} />
+						)}
+
+						<button type="button" style={styles.outlineLinkBtn} onClick={() => jumpTo(node)}>
+							{node.text}
+						</button>
+					</div>
+
+					<div style={styles.outlineRight}>
+						<button
+							type="button"
+							style={styles.miniBtn}
+							onClick={() => copySectionLinkImpl(node.id)}
+							title="Copy link"
+						>
+							⧉
+						</button>
+					</div>
+				</div>
+
+				{hasChildren && !isCollapsed ? node.children.map(renderOutlineNode) : null}
+			</div>
+		);
+	}
+
+	return (
+		<main style={styles.stage}>
+			<style>{`
+				.tiptap-editor {
+					outline: none;
+					width: 100%;
+					flex: 1 1 auto;
+					min-height: 600px;
+					color: #ecfeff;
+					font-size: 20px;
+					line-height: 1.5;
+					font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+					caret-color: #ecfeff;
+				}
+				.tiptap-editor p { margin: 0 0 2px 0; }
+				.tiptap-editor h1, .tiptap-editor h2, .tiptap-editor h3 {
+					margin: 14px 0 6px 0;
+					font-weight: 900;
+					letter-spacing: 0.2px;
+				}
+				.tiptap-editor h1 { font-size: 28px; line-height: 1.25; margin-top: 22px; }
+				.tiptap-editor h2 { font-size: 22px; line-height: 1.3;  margin-top: 18px; }
+				.tiptap-editor h3 { font-size: 18px; line-height: 1.35; margin-top: 14px; }
+				.tiptap-editor h1:first-child, .tiptap-editor h2:first-child, .tiptap-editor h3:first-child {
+					margin-top: 0;
+				}
+				.tiptap-editor ul {
+					list-style-type: disc;
+					padding-left: 1.5em;
+					margin: 4px 0;
+				}
+				.tiptap-editor ol {
+					list-style-type: decimal;
+					padding-left: 1.5em;
+					margin: 4px 0;
+				}
+				.tiptap-editor li { margin: 1px 0; }
+				.tiptap-editor span[style*="font-size"] { line-height: 1.4; }
+			`}</style>
+
+			<div style={styles.container}>
+				<header style={styles.header}>
+					<div>
+						<div style={styles.h1}>Note</div>
+						<div style={styles.sub}>{slugifyClassName(noteData.classId)}</div>
+
+						{statusText ? (
+							<div style={saveState === "error" ? styles.statusError : styles.status}>
+								{statusText}
+								{saveState === "error" ? (
+									<>
+										<button type="button" style={styles.retryBtn} onClick={retrySave}>
+											Retry
+										</button>
+										{lastSaveError ? <span style={styles.errorInline}>{lastSaveError}</span> : null}
+									</>
+								) : null}
+							</div>
+						) : null}
+
+						{flashcardsMessage ? <div style={styles.sub}>{flashcardsMessage}</div> : null}
+					</div>
+
+					<div style={styles.actions}>
+						<button type="button" style={styles.action} onClick={() => setOutlineOpen((v) => !v)}>
+							{outlineOpen ? "Hide outline" : "Show outline"}
+						</button>
+
+						<button
+							type="button"
+							style={styles.primaryAction}
+							onClick={generateFlashcards}
+							disabled={flashcardsStatus === "generating"}
+						>
+							{flashcardsStatus === "generating" ? "Generating…" : "Generate flashcards"}
+						</button>
+
+						<Link href={`/note/${noteId}/flashcards`} style={styles.action}>
+							View flashcards
+						</Link>
+
+						<Link href={`/class/${slugifyClassName(noteData.classId)}`} style={styles.action}>
+							Back to class
+						</Link>
+
+						<button type="button" style={styles.dangerAction} onClick={deleteSelf}>
+							Delete
+						</button>
+
+						<button
+							type="button"
+							style={styles.action}
+							onClick={() => router.push(`/class/${slugifyClassName(noteData.classId)}`)}
+						>
+							Done
+						</button>
+					</div>
+				</header>
+
+				<div style={styles.mainGrid}>
+					{outlineOpen ? (
+						<aside style={styles.outlinePanel} aria-label="Outline">
+							<div style={styles.outlineHeader}>
+								<div style={styles.outlineTitle}>Outline</div>
+								<div style={styles.outlineTools}>
+									<button type="button" style={styles.outlineToolBtn} onClick={expandAllOutline}>
+										Expand
+									</button>
+									<button type="button" style={styles.outlineToolBtn} onClick={collapseAllOutline}>
+										Collapse
+									</button>
+								</div>
+							</div>
+
+							{outlineTree.length === 0 ? (
+								<div style={{ marginTop: 10, fontSize: 13, color: theme.muted, lineHeight: 1.45 }}>
+									Add headings (H1–H3) to see an outline here.
+								</div>
+							) : (
+								outlineTree.map(renderOutlineNode)
+							)}
+						</aside>
+					) : null}
+
+					<div style={styles.docShell}>
+						<div style={styles.paper} onBlurCapture={onEditorBlurCapture}>
+							<input
+								value={title}
+								onChange={(e) => saveTitleValue(e.target.value)}
+								placeholder="Untitled note"
+								style={styles.input}
+							/>
+
+							<NoteToolbar
+								editor={editor}
+								theme={theme}
+								fontSize={fontSize}
+								fontColor={fontColor}
+								applyFontColor={applyFontColor}
+								setFontSize={setFontSize}
+								styles={styles}
+							/>
+
+							<EditorContent editor={editor} />
+						</div>
+					</div>
+				</div>
+			</div>
+		</main>
+	);
 }
