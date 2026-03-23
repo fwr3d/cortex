@@ -20,7 +20,15 @@ import type {
 
 const USER_ID_KEY = "cortex:userId";
 
-function getUserId(): string | null {
+async function getSessionUserId(): Promise<string | null> {
+	try {
+		const { data: { session } } = await supabase.auth.getSession();
+		if (session?.user?.id) {
+			localStorage.setItem(USER_ID_KEY, session.user.id);
+			return session.user.id;
+		}
+	} catch {}
+	// fallback to localStorage
 	try {
 		return localStorage.getItem(USER_ID_KEY);
 	} catch {
@@ -28,7 +36,15 @@ function getUserId(): string | null {
 	}
 }
 
+const LOCAL_ONBOARDING_KEY = "cortex:onboarding:v1";
+
 async function loadOnboarding(userId: string): Promise<OnboardingPayload | null> {
+	if (userId === "local-user") {
+		try {
+			const raw = localStorage.getItem(LOCAL_ONBOARDING_KEY);
+			return raw ? JSON.parse(raw) : null;
+		} catch { return null; }
+	}
 	const { data } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
 	if (!data) return null;
 	return {
@@ -42,15 +58,27 @@ async function loadOnboarding(userId: string): Promise<OnboardingPayload | null>
 	} as OnboardingPayload;
 }
 
-async function saveOnboarding(userId: string, payload: OnboardingPayload) {
-	await supabase.from("profiles").upsert({
-		id: userId,
+async function saveOnboarding(userId: string, payload: OnboardingPayload): Promise<string | null> {
+	if (userId === "local-user") {
+		try {
+			localStorage.setItem(LOCAL_ONBOARDING_KEY, JSON.stringify(payload));
+			return null;
+		} catch (e) {
+			return e instanceof Error ? e.message : "Failed to save locally";
+		}
+	}
+	const { data: { session } } = await supabase.auth.getSession();
+	if (!session) return "Not authenticated — please sign out and sign in again.";
+
+	const { error } = await supabase.from("profiles").upsert({
+		id: session.user.id,
 		education_level: payload.educationLevel,
 		grade: payload.educationLevel === "highSchool" ? payload.grade ?? null : null,
 		college_name: payload.educationLevel === "college" ? payload.collegeName ?? null : null,
 		major: payload.educationLevel === "college" ? payload.major ?? null : null,
 		classes: payload.classes ?? [],
 	});
+	return error ? error.message : null;
 }
 
 export default function Onboarding() {
@@ -95,6 +123,7 @@ export default function Onboarding() {
 
 	// HS suggestion UI
 	const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({});
+	const [saveError, setSaveError] = useState<string | null>(null);
 
 	// Theme + styles
 	const theme = useMemo(
@@ -114,26 +143,27 @@ export default function Onboarding() {
 
 	// Load saved onboarding (remember data)
 	useEffect(() => {
-		const userId = getUserId();
-		if (!userId) {
-			router.push("/login");
-			return;
-		}
-
-		loadOnboarding(userId).then((saved) => {
-			if (!saved) return;
-			setPayload(saved);
-			setEducationLevel(saved.educationLevel);
-			setClasses(saved.classes ?? []);
-			if (saved.educationLevel === "highSchool") {
-				setGrade(saved.grade);
-				setHighSchoolName(saved.highSchoolName ?? "");
-			} else {
-				setCollegeName(saved.collegeName);
-				setCollegeQuery(saved.collegeName);
-				setMajor(saved.major ?? "");
-				setMajorQuery(saved.major ?? "");
+		getSessionUserId().then((userId) => {
+			if (!userId) {
+				router.push("/login");
+				return;
 			}
+
+			loadOnboarding(userId).then((saved) => {
+				if (!saved) return;
+				setPayload(saved);
+				setEducationLevel(saved.educationLevel);
+				setClasses(saved.classes ?? []);
+				if (saved.educationLevel === "highSchool") {
+					setGrade(saved.grade);
+					setHighSchoolName(saved.highSchoolName ?? "");
+				} else {
+					setCollegeName(saved.collegeName);
+					setCollegeQuery(saved.collegeName);
+					setMajor(saved.major ?? "");
+					setMajorQuery(saved.major ?? "");
+				}
+			});
 		});
 	}, [router]);
 
@@ -282,7 +312,8 @@ export default function Onboarding() {
 	};
 
 	const saveAndGoDashboard = async () => {
-		const userId = getUserId();
+		setSaveError(null);
+		const userId = await getSessionUserId();
 		if (!userId) {
 			router.push("/login");
 			return;
@@ -309,7 +340,11 @@ export default function Onboarding() {
 			};
 		}
 
-		await saveOnboarding(userId, nextPayload);
+		const err = await saveOnboarding(userId, nextPayload);
+		if (err) {
+			setSaveError(err);
+			return;
+		}
 		router.push("/dashboard");
 	};
 
@@ -367,6 +402,7 @@ export default function Onboarding() {
 						nextDisabled={classesNextDisabled}
 						onNext={saveAndGoDashboard}
 						onBack={() => setStep("education")}
+						saveError={saveError}
 					/>
 				)}
 			</section>

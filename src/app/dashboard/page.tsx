@@ -48,6 +48,16 @@ export default function DashboardPage() {
 	const isMobile = useMobile();
 
 	useEffect(() => {
+		const userId = localStorage.getItem(USER_ID_KEY);
+
+		if (userId === "local-user") {
+			try {
+				const raw = localStorage.getItem("cortex:onboarding:v1");
+				if (raw) setPayload(JSON.parse(raw) as OnboardingPayload);
+			} catch {}
+			return;
+		}
+
 		supabase.auth.getSession().then(async ({ data: { session } }) => {
 			if (!session) return;
 			localStorage.setItem(USER_ID_KEY, session.user.id);

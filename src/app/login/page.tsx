@@ -35,9 +35,13 @@ export default function LoginPage() {
 			if (mode === "signup") {
 				const { data, error } = await supabase.auth.signUp({ email, password });
 				if (error) throw error;
-				if (data.user) {
-					localStorage.setItem(USER_ID_KEY, data.user.id);
+				if (data.session) {
+					// Session exists — email confirmation not required
+					localStorage.setItem(USER_ID_KEY, data.session.user.id);
 					router.push("/onboarding");
+				} else if (data.user) {
+					// No session — email confirmation required
+					setError("Check your email to confirm your account, then sign in.");
 				}
 			} else {
 				const { data, error } = await supabase.auth.signInWithPassword({ email, password });
@@ -265,6 +269,16 @@ export default function LoginPage() {
 						</button>
 					</div>
 				</form>
+
+				<div style={{ padding: "12px 6px 0" }}>
+					<button
+						type="button"
+						style={{ width: "100%", border: `1px solid ${theme.border}`, borderRadius: 14, background: "transparent", color: theme.muted, fontWeight: 700, fontSize: 13, padding: "10px 14px", cursor: "pointer" }}
+						onClick={() => { localStorage.setItem(USER_ID_KEY, "local-user"); router.push("/onboarding"); }}
+					>
+						Continue without account (local only)
+					</button>
+				</div>
 
 				<footer style={styles.foot}>
 					<Link href="/" prefetch style={styles.link}>
